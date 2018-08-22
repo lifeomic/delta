@@ -1,6 +1,9 @@
 delta
 =====
 
+[![Build Status](https://travis-ci.org/lifeomic/delta.svg?branch=master)](https://travis-ci.org/lifeomic/delta)
+[![Coverage Status](https://coveralls.io/repos/github/lifeomic/delta/badge.svg?branch=master)](https://coveralls.io/github/lifeomic/delta?branch=master)
+
 Delta provides tooling for creating and testing AWS Lambda functions that
 process AWS data streams.
 
