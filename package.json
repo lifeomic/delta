@@ -1,5 +1,5 @@
 {
-  "name": "delta",
+  "name": "@lifeomic/delta",
   "version": "0.1.0",
   "description": "Tools for working with data streams in AWS Lambda",
   "main": "src/index.js",
