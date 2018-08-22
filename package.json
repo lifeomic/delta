@@ -1,0 +1,43 @@
+{
+  "name": "delta",
+  "version": "0.0.0",
+  "description": "Tools for working with data streams in AWS Lambda",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "nyc ava -v"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "streams"
+  ],
+  "author": "LifeOmic <development@lifeomic.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lifeomic/delta.git"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@lifeomic/eslint-plugin-node": "^1.1.2",
+    "ava": "^0.25.0",
+    "eslint": "^5.4.0",
+    "nyc": "^12.0.2",
+    "sinon": "^6.1.5"
+  },
+  "ava": {
+    "failWithoutAssertions": false,
+    "files": [
+      "test/**/*.test.js"
+    ]
+  },
+  "eslintConfig": {
+    "extends": "plugin:@lifeomic/node/recommended"
+  },
+  "nyc": {
+    "branches": 100,
+    "check-coverage": true,
+    "functions": 100,
+    "lines": 100,
+    "statements": 100
+  }
+}
