@@ -1,27 +1,21 @@
-const { UnhandledEventError } = require('./errors');
+const rxjs = require('rxjs');
+const { filter, flatMap, map, mergeAll, share, throwIfEmpty } = require('rxjs/operators');
 
-exports.pipeline = (...steps) => async (event, context) => {
-  let value = event;
+exports.records = () => rxjs.pipe(
+  filter((event) => event.hasOwnProperty('Records')),
+  flatMap(({ Records }) => Records)
+);
 
-  while (steps.length && value !== undefined) {
-    const step = steps.shift();
-    value = await step(value, context);
-  }
-
-  return value;
+exports.some = (...operatorFactories) => async (event, context) => {
+  const streamEvent = rxjs.of(event).pipe(share());
+  return rxjs.from(operatorFactories)
+    .pipe(
+      map((factory) => factory(context)),
+      map((operator) => streamEvent.pipe(operator)),
+      mergeAll(),
+      throwIfEmpty()
+    )
+    .toPromise();
 };
 
-exports.some = (...handlers) => async (event, context) => {
-  let result;
-
-  while (result === undefined && handlers.length) {
-    const handler = handlers.shift();
-    result = await handler(event, context);
-  }
-
-  if (result === undefined) {
-    throw new UnhandledEventError(event);
-  }
-
-  return result;
-};
+exports.withContext = (generator, handler) => async (event, context) => handler(event, generator(context));
