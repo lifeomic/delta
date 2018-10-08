@@ -1,9 +1,9 @@
 const rxjs = require('rxjs');
-const { filter, flatMap, map, mergeAll, share, throwIfEmpty } = require('rxjs/operators');
+const { filter, concatMap, map, mergeAll, share, throwIfEmpty } = require('rxjs/operators');
 
 exports.records = () => rxjs.pipe(
   filter((event) => event.hasOwnProperty('Records')),
-  flatMap(({ Records }) => Records)
+  concatMap(({ Records }) => rxjs.from(Records))
 );
 
 exports.some = (...operatorFactories) => async (event, context) => {
