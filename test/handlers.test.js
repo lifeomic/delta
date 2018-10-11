@@ -3,7 +3,7 @@ const sinon = require('sinon');
 const test = require('ava');
 
 const { count, delay, flatMap, ignoreElements, mapTo, toArray } = require('rxjs/operators');
-const { handlers } = require('..');
+const { generators, handlers } = require('..');
 
 test('some returns the last operator emission', async (test) => {
   const context = {};
@@ -110,4 +110,36 @@ test('the record extractor emits each record in stream payloads', async (test) =
     .toPromise();
 
   test.deepEqual(result, event.Records);
+});
+
+test('the scheduled event filter re-emits cloudwatch schedule events', async (test) => {
+  const event = generators.scheduledEvent();
+
+  const result = await rxjs.of(event)
+    .pipe(handlers.followSchedule(), toArray())
+    .toPromise();
+
+  test.deepEqual(result, [ event ]);
+});
+
+test('the scheduled event filter does not re-emit other events', async (test) => {
+  const event = {};
+
+  const result = await rxjs.of(event)
+    .pipe(handlers.followSchedule(), count())
+    .toPromise();
+
+  test.is(result, 0);
+});
+
+test('the scheduled event filter can be scoped to a specific schedule', async (test) => {
+  const genericEvent = generators.scheduledEvent();
+  const myScheduleEvent = generators.scheduledEvent({ schedule: 'arn:aws:events:us-east-1:123456789012:rule/my-schedule' });
+  const otherScheduleEvent = generators.scheduledEvent({ schedule: 'arn:aws:events:us-east-1:123456789012:rule/other-schedule' });
+
+  const result = await rxjs.of(genericEvent, myScheduleEvent, otherScheduleEvent)
+    .pipe(handlers.followSchedule({ schedule: 'arn:aws:events:us-east-1:123456789012:rule/my-schedule' }), toArray())
+    .toPromise();
+
+  test.deepEqual(result, [ myScheduleEvent ]);
 });

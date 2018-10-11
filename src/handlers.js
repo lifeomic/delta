@@ -1,6 +1,16 @@
 const rxjs = require('rxjs');
 const { filter, concatMap, map, mergeAll, share, throwIfEmpty } = require('rxjs/operators');
 
+exports.followSchedule = (options = {}) => filter((event) => {
+  let isScheduledEvent = event.source === 'aws.events' && event['detail-type'] === 'Scheduled Event';
+
+  if (options.schedule) {
+    isScheduledEvent &= event.resources.includes(options.schedule);
+  }
+
+  return isScheduledEvent;
+});
+
 exports.records = () => rxjs.pipe(
   filter((event) => event.hasOwnProperty('Records')),
   concatMap(({ Records }) => rxjs.from(Records))
