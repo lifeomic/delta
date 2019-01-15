@@ -1,8 +1,26 @@
-const { from, EMPTY, of, combineLatest, BehaviorSubject } = require('rxjs');
-const { scan, switchMap, concatMap, map } = require('rxjs/operators');
+const assert = require('assert');
+const get = require('lodash/get');
+const pick = require('lodash/pick');
+const set = require('lodash/set');
 
-const NO_KEY_KNOWN = Symbol('NO_KEY_KNOWN');
+const rxjs = require('rxjs');
+const { from, EMPTY, of, combineLatest, BehaviorSubject } = require('rxjs');
+const { bufferCount, concatAll, scan, switchMap, concatMap, map } = require('rxjs/operators');
+
+const DELETE = 'DeleteRequest';
+const PUT = 'PutRequest';
+
+const DYNAMODB_BATCH_SIZE = 25;
 const END_OF_PAGES = Symbol('END_OF_PAGES');
+const NO_KEY_KNOWN = Symbol('NO_KEY_KNOWN');
+
+exports.delete = function deleteItems (keys = [ 'id' ]) {
+  return map((item) => ({ ...item, key: pick(item.item, keys), operation: DELETE }));
+};
+
+exports.put = function putItems () {
+  return map((item) => ({ ...item, operation: PUT }));
+};
 
 exports.query = function query (documentClient, query, itemRequests) {
   const table = query.TableName;
@@ -71,4 +89,72 @@ exports.query = function query (documentClient, query, itemRequests) {
       }),
       map(item => { return {table, item}; })
     );
+};
+
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const performBatchWrite = async (documentClient, batch, attempts = 0) => {
+  if (attempts >= 3) {
+    throw new Error('Failed to complete batch write after multiple attempts');
+  }
+
+  if (attempts > 0) {
+    await sleep(200 * attempts * attempts);
+  }
+
+  const results = await documentClient.batchWrite(batch).promise();
+
+  if (results.UnprocessedItems && Object.keys(results.UnprocessedItems).length) {
+    const batch = { RequestItems: results.UnprocessedItems };
+    return performBatchWrite(documentClient, batch, attempts + 1);
+  }
+};
+
+const requestForItem = (item) => {
+  const request = {};
+
+  switch (item.operation) {
+    case DELETE:
+      set(request, item.operation, { Key: item.key });
+      break;
+    case PUT:
+      set(request, item.operation, { Item: item.item });
+      break;
+  }
+
+  assert(Object.keys(request).length === 1, `Invalid write operation '${item.operation}'`);
+  return request;
+};
+
+exports.write = function write (documentClient) {
+  const writeBufferSpace = new BehaviorSubject(DYNAMODB_BATCH_SIZE);
+
+  const write = rxjs.pipe(
+    // DynamoDB restricts batchWrites to batches of `DYNAMODB_BATCH_SIZE`
+    // See https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-api
+    bufferCount(DYNAMODB_BATCH_SIZE),
+    concatMap(async (batch) => {
+      // Now that a batch of item is ready, request another batch
+      writeBufferSpace.next(DYNAMODB_BATCH_SIZE);
+
+      const request = {
+        RequestItems: batch.reduce(
+          (requests, item) => {
+            const table = get(requests, item.table, []);
+            const request = requestForItem(item);
+            table.push(request);
+            return { ...requests, [item.table]: table };
+          },
+          {}
+        )
+      };
+
+      await performBatchWrite(documentClient, request);
+      // Re-emit the successfully processed operations
+      return from(batch);
+    }),
+    concatAll()
+  );
+
+  return {writeBufferSpace, write};
 };
