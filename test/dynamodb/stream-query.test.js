@@ -122,16 +122,24 @@ test('results can be requested one at a time', async (test) => {
   test.true(querySpy.getCall(2).calledAfter(slowIdentity.getCall(1)));
 });
 
-test('results can be requested all at once', async (test) => {
+test('results can be requested all at once (finite)', async (test) => {
   await testStreamBehavior(test, 0, 2, 0);
+});
+
+test('results can be requested all at once (infinite)', async (test) => {
+  await testStreamBehavior(test, 0, Infinity, 0);
 });
 
 test('when more than the available items are requested then all are returned', async (test) => {
   await testStreamBehavior(test, 0, 5, 0);
 });
 
-test('results can be requested even before the  stream is started', async (test) => {
+test('results can be requested even before the  stream is started (finite)', async (test) => {
   await testStreamBehavior(test, 2, 0, 0);
+});
+
+test('results can be requested even before the  stream is started (infinite)', async (test) => {
+  await testStreamBehavior(test, Infinity, 0, 0);
 });
 
 test('no results are returned the stream is empty', async (test) => {

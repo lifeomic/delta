@@ -36,9 +36,6 @@
     "failWithoutAssertions": false,
     "files": [
       "test/**/*.test.js"
-    ],
-    "require": [
-      "./test/setup"
     ]
   },
   "eslintConfig": {

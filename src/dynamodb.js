@@ -53,7 +53,7 @@ exports.query = function query (documentClient, query, itemRequests) {
           return EMPTY;
         }
         if (startKey !== END_OF_PAGES && itemsDesired > 0) {
-          return of(startKey);
+          return of({startKey, itemsDesired});
         } else {
           if (noMoreRequests || startKey === END_OF_PAGES) {
             desiredItemAdjustments.complete();
@@ -65,12 +65,11 @@ exports.query = function query (documentClient, query, itemRequests) {
       }),
       // A new page was requested, so use the start key to execute
       // the query
-      concatMap((startKey) => {
+      concatMap(({startKey, itemsDesired}) => {
         const pagedQuery = {
           ...query,
           ExclusiveStartKey: startKey,
-          // Paging is forced during testing
-          Limit: process.env.DYNAMODB_DEFAULT_PAGE_SIZE
+          Limit: itemsDesired
         };
 
         // Now that the key has been used, replace it with
