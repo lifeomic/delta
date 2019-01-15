@@ -1,0 +1,1 @@
+process.env.DYNAMODB_DEFAULT_PAGE_SIZE = 1;
