@@ -47,10 +47,12 @@ const testWritingItems = async (test, {operator, validator}) => {
 
   const expected = [];
   const performed = await mockItemQueryStream(items, writeBufferSpace)
-    .pipe(operator)
-    .pipe(tap((value) => expected.push(value)))
-    .pipe(write)
-    .pipe(toArray())
+    .pipe(
+      operator,
+      tap((value) => expected.push(value)),
+      write,
+      toArray()
+    )
     .toPromise();
 
   test.deepEqual(performed, expected);
@@ -91,8 +93,10 @@ test('when a request fails the stream emits an error', async (test) => {
 
   const error = await test.throws(
     mockItemQueryStream(items, writeBufferSpace)
-      .pipe(dynamodb.delete())
-      .pipe(write)
+      .pipe(
+        dynamodb.delete(),
+        write
+      )
       .toPromise()
   );
 
@@ -126,13 +130,43 @@ test('unprocessed items are retried', async (test) => {
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
   await mockItemQueryStream(items, writeBufferSpace)
-    .pipe(dynamodb.delete())
-    .pipe(write)
+    .pipe(
+      dynamodb.delete(),
+      write
+    )
     .toPromise();
 
   sinon.assert.calledTwice(batchWrite);
   items.forEach((item) => assertItemDeleted(batchWrite.firstCall, item.table, item.item));
   items.slice(0, 10).forEach((item) => assertItemDeleted(batchWrite.secondCall, item.table, item.item));
+});
+
+test('an empty unprocessed list is ignored', async (test) => {
+  const { batchWrite, dynamoClient } = test.context;
+  const table = uuid();
+
+  const items = new Array(25).fill(null)
+    .map((item) => ({ item: { id: uuid() }, table }));
+
+  const unprocessed = {
+    UnprocessedItems: {}
+  };
+
+  batchWrite
+    .yields(new Error('unmocked write'))
+    .onFirstCall().yields(null, unprocessed);
+
+  const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
+
+  await mockItemQueryStream(items, writeBufferSpace)
+    .pipe(
+      dynamodb.delete(),
+      write
+    )
+    .toPromise();
+
+  sinon.assert.calledOnce(batchWrite);
+  items.forEach((item) => assertItemDeleted(batchWrite.firstCall, item.table, item.item));
 });
 
 test('when a batch fails too many times an error is emitted', async (test) => {
@@ -158,8 +192,10 @@ test('when a batch fails too many times an error is emitted', async (test) => {
 
   await test.throws(
     mockItemQueryStream(items, writeBufferSpace)
-      .pipe(dynamodb.delete())
-      .pipe(write)
+      .pipe(
+        dynamodb.delete(),
+        write
+      )
       .toPromise(),
     'Failed to complete batch write after multiple attempts'
   );
