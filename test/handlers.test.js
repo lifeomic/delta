@@ -42,7 +42,7 @@ test('some throws an error if no operators emit', async (test) => {
   const three = () => ignoreElements();
 
   const handler = handlers.some(one, two, three);
-  await test.throws(handler(event, context), /no elements/);
+  await test.throwsAsync(handler(event, context), /no elements/);
 });
 
 test('some throws if one of the handlers throws', async (test) => {
@@ -55,7 +55,7 @@ test('some throws if one of the handlers throws', async (test) => {
   const three = () => mapTo('hello');
 
   const handler = handlers.some(one, two, three);
-  const error = await test.throws(handler(event, context));
+  const error = await test.throwsAsync(handler(event, context));
 
   test.is(error, failure);
 });

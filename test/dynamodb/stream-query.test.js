@@ -173,7 +173,7 @@ test('when a database request fails the stream fails', async (test) => {
     rxjs.of(100)
   );
 
-  await test.throws(stream.pipe(toArray()).toPromise());
+  await test.throwsAsync(stream.pipe(toArray()).toPromise());
 });
 
 test('when the item request Observer fails the stream fails', async (test) => {
@@ -195,5 +195,5 @@ test('when the item request Observer fails the stream fails', async (test) => {
     rxjs.throwError(new Error('Bad item request Observer'))
   );
 
-  await test.throws(stream.pipe(toArray()).toPromise());
+  await test.throwsAsync(stream.pipe(toArray()).toPromise());
 });
