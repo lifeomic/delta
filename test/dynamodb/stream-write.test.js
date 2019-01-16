@@ -91,7 +91,7 @@ test('when a request fails the stream emits an error', async (test) => {
 
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
-  const error = await test.throws(
+  const error = await test.throwsAsync(
     dynamodb.mockItemQueryStream(items, writeBufferSpace)
       .pipe(
         dynamodb.delete(),
@@ -190,7 +190,7 @@ test('when a batch fails too many times an error is emitted', async (test) => {
 
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
-  await test.throws(
+  await test.throwsAsync(
     dynamodb.mockItemQueryStream(items, writeBufferSpace)
       .pipe(
         dynamodb.delete(),

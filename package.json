@@ -23,7 +23,7 @@
   "devDependencies": {
     "@lifeomic/eslint-plugin-node": "^1.1.2",
     "@lifeomic/lambda-tools": "^5.1.1",
-    "ava": "^0.25.0",
+    "ava": "^1.1.0",
     "coveralls": "^3.0.2",
     "eslint": "^5.4.0",
     "luxon": "^1.3.3",
