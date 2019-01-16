@@ -1,21 +1,41 @@
 const assert = require('assert');
+const drop = require('lodash/drop');
 const get = require('lodash/get');
 const pick = require('lodash/pick');
 const set = require('lodash/set');
+const take = require('lodash/take');
 
 const rxjs = require('rxjs');
 const { from, EMPTY, of, combineLatest, BehaviorSubject } = require('rxjs');
-const { bufferCount, concatAll, scan, switchMap, concatMap, map } = require('rxjs/operators');
+const { bufferCount, concatAll, scan, switchMap, concatMap, map, takeWhile } = require('rxjs/operators');
 
 const DELETE = 'DeleteRequest';
 const PUT = 'PutRequest';
 
 const DYNAMODB_BATCH_SIZE = 25;
+const END_MARKER = Symbol('End of mock query');
 const END_OF_PAGES = Symbol('END_OF_PAGES');
 const NO_KEY_KNOWN = Symbol('NO_KEY_KNOWN');
 
 exports.delete = function deleteItems (keys = [ 'id' ]) {
   return map((item) => ({ ...item, key: pick(item.item, keys), operation: DELETE }));
+};
+
+exports.mockItemQueryStream = (items, itemRequests) => {
+  return itemRequests
+    .pipe(
+      concatMap(count => {
+        const itemsToReturn = take(items, count);
+        items = drop(items, count);
+
+        if (items.length === 0) {
+          itemsToReturn.push(END_MARKER);
+        }
+
+        return rxjs.from(itemsToReturn);
+      }),
+      takeWhile(item => item !== END_MARKER)
+    );
 };
 
 exports.put = function putItems () {

@@ -5,7 +5,7 @@ const util = require('util');
 const uuid = require('uuid/v4');
 
 const { dynamodb } = require('../..');
-const { requestToDeleteItem, requestToUpdateItem, mockItemQueryStream } = require('./helpers/streams');
+const { requestToDeleteItem, requestToUpdateItem } = require('./helpers/streams');
 const { tap, toArray } = require('rxjs/operators');
 
 const assertItemDeleted = (stub, table, item) => sinon.assert.calledWithExactly(
@@ -46,7 +46,7 @@ const testWritingItems = async (test, {operator, validator}) => {
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
   const expected = [];
-  const performed = await mockItemQueryStream(items, writeBufferSpace)
+  const performed = await dynamodb.mockItemQueryStream(items, writeBufferSpace)
     .pipe(
       operator,
       tap((value) => expected.push(value)),
@@ -92,7 +92,7 @@ test('when a request fails the stream emits an error', async (test) => {
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
   const error = await test.throws(
-    mockItemQueryStream(items, writeBufferSpace)
+    dynamodb.mockItemQueryStream(items, writeBufferSpace)
       .pipe(
         dynamodb.delete(),
         write
@@ -129,7 +129,7 @@ test('unprocessed items are retried', async (test) => {
 
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
-  await mockItemQueryStream(items, writeBufferSpace)
+  await dynamodb.mockItemQueryStream(items, writeBufferSpace)
     .pipe(
       dynamodb.delete(),
       write
@@ -158,7 +158,7 @@ test('an empty unprocessed list is ignored', async (test) => {
 
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
-  await mockItemQueryStream(items, writeBufferSpace)
+  await dynamodb.mockItemQueryStream(items, writeBufferSpace)
     .pipe(
       dynamodb.delete(),
       write
@@ -191,7 +191,7 @@ test('when a batch fails too many times an error is emitted', async (test) => {
   const {write, writeBufferSpace} = dynamodb.write(dynamoClient);
 
   await test.throws(
-    mockItemQueryStream(items, writeBufferSpace)
+    dynamodb.mockItemQueryStream(items, writeBufferSpace)
       .pipe(
         dynamodb.delete(),
         write
