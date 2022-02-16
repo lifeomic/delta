@@ -1,0 +1,5 @@
+enforceSemanticCommits: true
+reportWorkflowFailures:
+  Release:
+    # This is #skillspring
+    slackChannel: CF46X5T4G
