@@ -1,1 +1,1 @@
-export const TMP = 'TMP';
+export * from './dynamo-streams';

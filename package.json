@@ -26,13 +26,22 @@
   "devDependencies": {
     "@lifeomic/eslint-config-standards": "^2.1.1",
     "@lifeomic/jest-config": "^1.1.2",
+    "@lifeomic/logging": "^4.0.0",
     "@lifeomic/typescript-config": "^1.0.3",
     "@types/jest": "^27.4.1",
+    "@types/uuid": "^8.3.4",
     "eslint": "^8.9.0",
     "eslint-config-prettier": "^8.4.0",
     "jest": "^27.5.1",
     "prettier": "^2.5.1",
     "ts-jest": "^27.1.3",
-    "typescript": "^4.5.5"
+    "typescript": "^4.5.5",
+    "uuid": "^8.3.2"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.92"
+  },
+  "peerDependencies": {
+    "@lifeomic/logging": "*"
   }
 }
