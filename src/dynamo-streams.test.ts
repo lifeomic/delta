@@ -394,6 +394,25 @@ describe('DynamoStreamHandler', () => {
     });
   });
 
+  test('generates a correlation id', async () => {
+    const { sendEvent } = new DynamoStreamHandler({
+      logger,
+      unmarshall: testSerializer.unmarshall,
+      createRunContext: (ctx) => {
+        expect(typeof ctx.correlationId === 'string').toBe(true);
+        return {};
+      },
+    }).harness({ marshall: () => ({}) });
+
+    await sendEvent({ records: [] });
+
+    expect(logger.child).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: expect.any(String) }),
+    );
+
+    expect.assertions(2);
+  });
+
   describe('error scenarios', () => {
     const lambda = new DynamoStreamHandler({
       logger,
