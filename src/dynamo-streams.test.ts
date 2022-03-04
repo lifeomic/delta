@@ -399,17 +399,10 @@ describe('DynamoStreamHandler', () => {
       logger,
       unmarshall: testSerializer.unmarshall,
       createRunContext: (ctx) => {
-        ctx.logger.info(
-          { correlationId: ctx.correlationId },
-          'createRunContext',
-        );
+        expect(typeof ctx.correlationId === 'string').toBe(true);
         return {};
       },
-    })
-      .onInsert((ctx) => {
-        ctx.logger.info({ correlationId: ctx.correlationId }, 'insert');
-      })
-      .harness({ marshall: () => ({}) });
+    }).harness({ marshall: () => ({}) });
 
     await sendEvent({ records: [] });
 
@@ -417,15 +410,7 @@ describe('DynamoStreamHandler', () => {
       expect.objectContaining({ correlationId: expect.any(String) }),
     );
 
-    expect(logger.info).toHaveBeenCalledWith(
-      { correlationId: expect.any(String) },
-      'createRunContext',
-    );
-
-    expect(logger.info).toHaveBeenCalledWith(
-      { correlationId: expect.any(String) },
-      'insert',
-    );
+    expect.assertions(2);
   });
 
   describe('error scenarios', () => {
