@@ -1,8 +1,10 @@
 import { LoggerInterface } from '@lifeomic/logging';
+import { v4 as uuid } from 'uuid';
 import { DynamoDBStreamEvent, DynamoDBStreamHandler } from 'aws-lambda';
 
 export type BaseContext = {
   logger: LoggerInterface;
+  correlationId: string;
 };
 
 export type DynamoStreamHandlerConfig<Entity, Context> = {
@@ -164,9 +166,14 @@ export class DynamoStreamHandler<Entity, Context> {
           body: JSON.stringify({ healthy: true }),
         } as unknown as void;
       }
+      const correlationId = uuid();
 
       const base: BaseContext = {
-        logger: this.config.logger.child({ requestID: ctx.awsRequestId }),
+        correlationId,
+        logger: this.config.logger.child({
+          requestID: ctx.awsRequestId,
+          correlationId,
+        }),
       };
 
       const context: BaseContext & Context = {
