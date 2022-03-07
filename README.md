@@ -12,6 +12,8 @@ yarn add @lifeomic/delta
 This helper provides an abstraction over a DynamoDB Stream Lambda handler.
 
 ```typescript
+import { DynamoStreamHandler } from '@lifeomic/delta';
+
 const stream = new DynamoStreamHandler({
   logger,
   unmarshall: (object) => {
