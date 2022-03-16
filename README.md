@@ -31,7 +31,7 @@ const stream = new DynamoStreamHandler({
     entity.id;
 
     // `ctx` contains the nice result of `createRunContext`
-    await ctx.dataSources.doSomething();
+    await ctx.doSomething();
 
     // `ctx` contains a logger by default, which already includes niceties like
     // the AWS request id
@@ -89,6 +89,6 @@ test('something', async () => {
     ]
   })
 
-  expect(context.dataSources.doSomething).toHaveBeenCalled()
+  expect(context.doSomething).toHaveBeenCalled()
 })
 ```
