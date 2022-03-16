@@ -46,6 +46,24 @@ describe('DynamoStreamHandler', () => {
     });
   });
 
+  test('responds to healthCheck events', async () => {
+    const lambda = new DynamoStreamHandler({
+      logger,
+      unmarshall: testSerializer.unmarshall,
+      createRunContext: () => ({}),
+    }).lambda();
+
+    const result = await lambda(
+      { healthCheck: true } as any,
+      {} as any,
+      {} as any,
+    );
+
+    expect(result).toStrictEqual({
+      healthy: true,
+    });
+  });
+
   test('handles insert events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
