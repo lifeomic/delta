@@ -31,7 +31,7 @@ const stream = new DynamoStreamHandler({
     entity.id;
 
     // `ctx` contains the nice result of `createRunContext`
-    await ctx.dataSources.doSomething();
+    await ctx.doSomething();
 
     // `ctx` contains a logger by default, which already includes niceties like
     // the AWS request id
@@ -62,6 +62,10 @@ export const handler = stream.lambda();
 `DynamoStreamHelper` also comes with a nice helper for testing: `harness(...)`
 
 ```typescript
+const context = {
+  doSomething: jest.fn()
+}
+
 const harness = stream.harness({
   marshall: () => {
     /* marshall from your custom type -> stream format */
@@ -70,6 +74,7 @@ const harness = stream.harness({
   logger,
   createRunContext: () => {
     /* optionally override the context, to mock e.g. data sources */
+    return context;
   }
 })
 
@@ -84,7 +89,6 @@ test('something', async () => {
     ]
   })
 
-  // Also provides access to the underlying run context for assertions + mocking
-  expect(harness.context.dataSources.doSomething).toHaveBeenCalled()
+  expect(context.doSomething).toHaveBeenCalled()
 })
 ```
