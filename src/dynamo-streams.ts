@@ -159,13 +159,18 @@ export class DynamoStreamHandler<Entity, Context> {
    */
   lambda(): DynamoDBStreamHandler {
     return async (event, ctx) => {
-      // 1. Handle the health check.
+      // 1. Handle potential health checks.
       if ((event as any).httpMethod) {
         return {
           statusCode: 200,
           body: JSON.stringify({ healthy: true }),
         } as unknown as void;
       }
+
+      if ((event as any).healthCheck) {
+        return { healthy: true } as any;
+      }
+
       const correlationId = uuid();
 
       const base: BaseContext = {
