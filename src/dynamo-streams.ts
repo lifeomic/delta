@@ -1,6 +1,30 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
-import { DynamoDBStreamEvent, DynamoDBStreamHandler } from 'aws-lambda';
+import {
+  DynamoDBRecord,
+  DynamoDBStreamEvent,
+  DynamoDBStreamHandler,
+  KinesisStreamEvent,
+  KinesisStreamRecord,
+} from 'aws-lambda';
+
+const isKinesisStreamRecord = (
+  record: KinesisStreamRecord | DynamoDBRecord,
+): record is KinesisStreamRecord => !!(record as KinesisStreamRecord).kinesis;
+
+const processRecord = (
+  record: KinesisStreamRecord | DynamoDBRecord,
+): DynamoDBRecord => {
+  if (isKinesisStreamRecord(record)) {
+    // If the record is a Kinesis stream record, parse it into a DynamoDB record.
+    const payload = Buffer.from(
+      (record as KinesisStreamRecord).kinesis.data,
+      'base64',
+    ).toString('utf8');
+    return JSON.parse(payload);
+  }
+  return record;
+};
 
 export type BaseContext = {
   logger: LoggerInterface;
@@ -158,7 +182,7 @@ export class DynamoStreamHandler<Entity, Context> {
    * actions.
    */
   lambda(): DynamoDBStreamHandler {
-    return async (event, ctx) => {
+    return async (event: DynamoDBStreamEvent | KinesisStreamEvent, ctx) => {
       // 1. Handle potential health checks.
       if ((event as any).httpMethod) {
         return {
@@ -189,7 +213,8 @@ export class DynamoStreamHandler<Entity, Context> {
       context.logger.info({ event }, 'Processing DynamoDB stream event');
 
       // Iterate through every event.
-      for (const record of event.Records) {
+      for (const rawRecord of event.Records) {
+        const record = processRecord(rawRecord);
         const recordLogger = this.config.logger.child({ record });
         if (!record.dynamodb) {
           recordLogger.error(

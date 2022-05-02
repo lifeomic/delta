@@ -24,6 +24,7 @@
     "build": "node build.js"
   },
   "devDependencies": {
+    "@lifeomic/aws-sdk-helpers": "^2.8.1",
     "@lifeomic/eslint-config-standards": "^2.1.1",
     "@lifeomic/jest-config": "^1.1.2",
     "@lifeomic/logging": "^4.0.0",

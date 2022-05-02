@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
+import { kinesis } from '@lifeomic/aws-sdk-helpers';
 import { DynamoStreamHandler } from './dynamo-streams';
 
 const testSerializer = {
@@ -61,6 +62,36 @@ describe('DynamoStreamHandler', () => {
 
     expect(result).toStrictEqual({
       healthy: true,
+    });
+  });
+
+  test('handles insert events (kinesis)', async () => {
+    const lambda = new DynamoStreamHandler({
+      logger,
+      unmarshall: testSerializer.unmarshall,
+      createRunContext: () => ({ logger, dataSources }),
+    })
+      .onInsert((ctx, entity) => {
+        ctx.dataSources.doSomething(entity);
+      })
+      .lambda();
+
+    const event = kinesis.stream.createKinesisStreamEvent([
+      {
+        kinesis: kinesis.stream.createKinesisStreamRecordPayload({
+          data: {
+            eventName: 'INSERT',
+            dynamodb: { NewImage: { marshalled: { id: 'new-insert' } } as any },
+          },
+        }),
+      },
+    ]);
+
+    await lambda(event as any, {} as any, {} as any);
+
+    expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
+    expect(dataSources.doSomething).toHaveBeenCalledWith({
+      id: 'new-insert',
     });
   });
 
