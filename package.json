@@ -18,8 +18,7 @@
   ],
   "main": "index.js",
   "scripts": {
-    "format": "eslint . --fix && prettier . --write",
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint .",
     "test": "jest",
     "build": "node build.js"
   },
@@ -33,6 +32,7 @@
     "conventional-changelog-conventionalcommits": "^4.6.3",
     "eslint": "^8.9.0",
     "eslint-config-prettier": "^8.4.0",
+    "eslint-plugin-prettier": "^4.2.1",
     "jest": "^27.5.1",
     "prettier": "^2.5.1",
     "semantic-release": "^19.0.2",
