@@ -1,11 +1,11 @@
 import { v4 as uuid } from 'uuid';
 import type { LoggerInterface } from '@lifeomic/logging';
 import type {
-  BaseContext,
   DynamoStreamHandler,
   DynamoStreamHandlerHarnessConfig,
   DynamoStreamHandlerHarnessContext,
 } from './dynamo-streams';
+import { BaseContext } from './utils';
 
 /**
  * Returns a mock logger for use with assertions in a Jest environment.

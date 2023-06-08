@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoStreamHandler } from './dynamo-streams';

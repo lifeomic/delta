@@ -1,11 +1,7 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoDBStreamEvent, DynamoDBStreamHandler } from 'aws-lambda';
-
-export type BaseContext = {
-  logger: LoggerInterface;
-  correlationId: string;
-};
+import { BaseContext, withHealthCheckHandling } from './utils';
 
 export type DynamoStreamHandlerConfig<Entity, Context> = {
   /**
@@ -158,19 +154,7 @@ export class DynamoStreamHandler<Entity, Context> {
    * actions.
    */
   lambda(): DynamoDBStreamHandler {
-    return async (event, ctx) => {
-      // 1. Handle potential health checks.
-      if ((event as any).httpMethod) {
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ healthy: true }),
-        } as unknown as void;
-      }
-
-      if ((event as any).healthCheck) {
-        return { healthy: true } as any;
-      }
-
+    return withHealthCheckHandling(async (event, ctx) => {
       const correlationId = uuid();
 
       const base: BaseContext = {
@@ -262,7 +246,7 @@ export class DynamoStreamHandler<Entity, Context> {
           }
         }
       }
-    };
+    });
   }
 
   /**

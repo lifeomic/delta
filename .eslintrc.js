@@ -4,5 +4,11 @@ module.exports = {
   overrides: [
     // Set correct env for config files
     { files: ['*.js'], env: { node: true } },
+    {
+      files: ['**/*.test.ts'],
+      rules: {
+        '@typescript-eslint/no-unsafe-argument': 'off',
+      },
+    },
   ],
 };
