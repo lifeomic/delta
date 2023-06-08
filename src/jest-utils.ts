@@ -6,6 +6,11 @@ import type {
   DynamoStreamHandlerHarnessContext,
 } from './dynamo-streams';
 import { BaseContext } from './utils';
+import {
+  SQSMessageHandler,
+  SQSMessageHandlerHarnessContext,
+  SQSMessageHandlerHarnessOptions,
+} from './sqs';
 
 /**
  * Returns a mock logger for use with assertions in a Jest environment.
@@ -93,6 +98,56 @@ export const useDynamoStreamHarness = <Entity, Context>(
     const harnessContext = stream.harness({
       logger,
       marshall: config.marshall,
+      createRunContext: () => runContext,
+    });
+
+    Object.assign(
+      context,
+      { context: { ...runContext, ...baseContext } },
+      harnessContext,
+    );
+  });
+
+  return context;
+};
+
+export type UseSQSQueueHarnessContext<Entity, Context> =
+  SQSMessageHandlerHarnessContext<Entity> & {
+    /**
+     * The context in use by the stream handler.
+     */
+    context: BaseContext & Context;
+  };
+
+/**
+ * Helper for creating a test harness to exercise an SQS handler in
+ * a Jest environment.
+ *
+ * @param stream The stream to harness.
+ * @param config A harness configuration.
+ */
+export const useSQSQueueHarness = <Entity, Context>(
+  stream: SQSMessageHandler<Entity, Context>,
+  config: SQSMessageHandlerHarnessOptions<Entity, Context>,
+): UseSQSQueueHarnessContext<Entity, Context> => {
+  const context: UseSQSQueueHarnessContext<Entity, Context> = {} as any;
+
+  const logger = useMockLogger();
+
+  beforeEach(async () => {
+    const createContext =
+      config.createRunContext ?? stream.config.createRunContext;
+
+    const baseContext: BaseContext = {
+      correlationId: uuid(),
+      logger,
+    };
+
+    const runContext = await createContext(baseContext);
+
+    const harnessContext = stream.harness({
+      logger,
+      stringifyMessage: config.stringifyMessage,
       createRunContext: () => runContext,
     });
 
