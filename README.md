@@ -59,7 +59,7 @@ const stream = new DynamoStreamHandler({
 export const handler = stream.lambda();
 ```
 
-`DynamoStreamHelper` also comes with a nice helper for testing: `harness(...)`
+`DynamoStreamHandler` also comes with a nice helper for testing: `harness(...)`
 
 ```typescript
 const context = {
@@ -90,5 +90,74 @@ test('something', async () => {
   })
 
   expect(context.doSomething).toHaveBeenCalled()
+})
+```
+
+### `SQSMessageHandler`
+
+This helper provides an abstraction over a SQS message Lambda handler.
+
+```typescript
+import { SQSMessageHandler } from '@lifeomic/delta';
+
+const queue = new SQSMessageHandler({
+  logger,
+  parseMessage: (message) => {
+    /* ... unmarshall from message string -> your custom type ... */
+    return JSON.parse(message);
+  },
+  createRunContext: () => {
+    /* ... create the "context", e.g. data sources ... */
+    return { doSomething: () => null };
+  },
+})
+  .onMessage(async (ctx, message) => {
+    // `ctx` contains the nice result of `createRunContext`:
+    await ctx.doSomething();
+
+    // `ctx` contains a logger by default, which already includes niceties like
+    // the AWS request id
+    ctx.logger.info('blah blah');
+  })
+  // Add multiple message handlers for code organization.
+  .onMessage(async (ctx, message) => {
+    // do something else
+  });
+
+// Provides a dead-simple API for creating the Lambda.
+export const handler = stream.lambda();
+```
+
+`SQSMessageHandler` also comes with a nice helper for testing: `harness(...)`
+
+```typescript
+const context = {
+  doSomething: jest.fn()
+}
+
+const harness = queue.harness({
+  stringifyMessage: (message) => {
+    /* marshall from your custom type -> string */
+    return JSON.stringify(message)
+  },
+  /* optionally override the logger */
+  logger,
+  createRunContext: () => {
+    /* optionally override the context, to mock e.g. data sources */
+    return context;
+  }
+})
+
+test('something', async () => {
+  // Provides a simple `sendEvent` function
+  await harness.sendEvent({
+    message: [
+      { /* message 1 */}
+      { /* message 2 */}
+      { /* message 3 */}
+    ]
+  })
+
+  expect(context.doSomething).toHaveBeenCalledTimes(3)
 })
 ```
