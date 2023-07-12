@@ -78,7 +78,7 @@ export type UseDynamoStreamHarnessContext<Entity, Context> =
  */
 export const useDynamoStreamHarness = <Entity, Context>(
   stream: DynamoStreamHandler<Entity, Context>,
-  config: DynamoStreamHandlerHarnessConfig<Entity, Context>,
+  config: DynamoStreamHandlerHarnessConfig<Context>,
 ): UseDynamoStreamHarnessContext<Entity, Context> => {
   const context: UseDynamoStreamHarnessContext<Entity, Context> = {} as any;
 
@@ -97,7 +97,6 @@ export const useDynamoStreamHarness = <Entity, Context>(
 
     const harnessContext = stream.harness({
       logger,
-      marshall: config.marshall,
       createRunContext: () => runContext,
     });
 

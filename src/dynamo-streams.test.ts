@@ -1,10 +1,13 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoStreamHandler } from './dynamo-streams';
+import { marshall } from '@aws-sdk/util-dynamodb';
+import { z } from 'zod';
+
+const TestSchema = z.object({ id: z.string(), name: z.string().optional() });
 
 const testSerializer = {
-  unmarshall: (object: any) => object.marshalled,
-  marshall: (object: any) => ({ marshalled: object }),
+  parse: (object: any) => TestSchema.parse(object),
 };
 
 const logger: jest.Mocked<LoggerInterface> = {
@@ -29,7 +32,7 @@ describe('DynamoStreamHandler', () => {
   test('responds to HTTP health checks', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({}),
     }).lambda();
 
@@ -48,7 +51,7 @@ describe('DynamoStreamHandler', () => {
   test('responds to healthCheck events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({}),
     }).lambda();
 
@@ -66,7 +69,7 @@ describe('DynamoStreamHandler', () => {
   test('handles insert events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     })
       .onInsert((ctx, entity) => {
@@ -79,7 +82,7 @@ describe('DynamoStreamHandler', () => {
         Records: [
           {
             eventName: 'INSERT',
-            dynamodb: { NewImage: { marshalled: { id: 'new-insert' } } as any },
+            dynamodb: { NewImage: { id: { S: 'new-insert' } } },
           },
         ],
       },
@@ -96,7 +99,7 @@ describe('DynamoStreamHandler', () => {
   test('handles modify events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     })
       .onModify((ctx, oldEntity, newEntity) => {
@@ -110,8 +113,8 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'MODIFY',
             dynamodb: {
-              OldImage: { marshalled: { id: 'old-modify' } } as any,
-              NewImage: { marshalled: { id: 'new-modify' } } as any,
+              OldImage: marshall({ id: 'old-modify' }),
+              NewImage: marshall({ id: 'new-modify' }),
             },
           },
         ],
@@ -130,7 +133,7 @@ describe('DynamoStreamHandler', () => {
   test('handles remove events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     })
       .onRemove((ctx, entity) => {
@@ -144,7 +147,7 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: { marshalled: { id: 'old-remove' } } as any,
+              OldImage: marshall({ id: 'old-remove' }),
             },
           },
         ],
@@ -162,7 +165,7 @@ describe('DynamoStreamHandler', () => {
   test('handles a variety of events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     })
       // onInsert twice to test same event through multiple actions
@@ -186,37 +189,27 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'INSERT',
             dynamodb: {
-              NewImage: {
-                marshalled: { id: 'new-insert-varied-lambda' },
-              } as any,
+              NewImage: marshall({ id: 'new-insert-varied-lambda' }),
             },
           },
           {
             eventName: 'MODIFY',
             dynamodb: {
-              OldImage: {
-                marshalled: { id: 'old-modify-varied-lambda' },
-              } as any,
-              NewImage: {
-                marshalled: { id: 'new-modify-varied-lambda' },
-              } as any,
+              OldImage: marshall({ id: 'old-modify-varied-lambda' }),
+              NewImage: marshall({ id: 'new-modify-varied-lambda' }),
             },
           },
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: {
-                marshalled: { id: 'old-remove-varied-lambda' },
-              } as any,
+              OldImage: marshall({ id: 'old-remove-varied-lambda' }),
             },
           },
           // A second remove event to test multiple events through a single action
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: {
-                marshalled: { id: 'old-remove-varied-lambda-second' },
-              } as any,
+              OldImage: marshall({ id: 'old-remove-varied-lambda-second' }),
             },
           },
         ],
@@ -250,13 +243,13 @@ describe('DynamoStreamHandler', () => {
     test('sends insert event', async () => {
       const { sendEvent } = new DynamoStreamHandler({
         logger,
-        unmarshall: testSerializer.unmarshall,
+        parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
       })
         .onInsert((ctx, entity) => {
           ctx.dataSources.doSomething(entity);
         })
-        .harness({ marshall: testSerializer.marshall });
+        .harness();
 
       await sendEvent({
         records: [{ type: 'insert', entity: { id: 'new-insert' } }],
@@ -271,13 +264,13 @@ describe('DynamoStreamHandler', () => {
     test('sends modify event', async () => {
       const { sendEvent } = new DynamoStreamHandler({
         logger,
-        unmarshall: testSerializer.unmarshall,
+        parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
       })
         .onModify((ctx, oldEntity, newEntity) => {
           ctx.dataSources.doSomething(oldEntity, newEntity);
         })
-        .harness({ marshall: testSerializer.marshall });
+        .harness();
 
       await sendEvent({
         records: [
@@ -299,13 +292,13 @@ describe('DynamoStreamHandler', () => {
     test('sends remove event', async () => {
       const { sendEvent } = new DynamoStreamHandler({
         logger,
-        unmarshall: testSerializer.unmarshall,
+        parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
       })
         .onRemove((ctx, entity) => {
           ctx.dataSources.doSomething(entity);
         })
-        .harness({ marshall: testSerializer.marshall });
+        .harness();
 
       await sendEvent({
         records: [{ type: 'remove', entity: { id: 'old-remove' } }],
@@ -320,7 +313,7 @@ describe('DynamoStreamHandler', () => {
     test('sends a variety of events', async () => {
       const { sendEvent } = new DynamoStreamHandler({
         logger,
-        unmarshall: testSerializer.unmarshall,
+        parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
       })
         // onInsert twice to test same event through multiple actions
@@ -336,7 +329,7 @@ describe('DynamoStreamHandler', () => {
         .onRemove((ctx, entity) => {
           ctx.dataSources.doSomething(entity);
         })
-        .harness({ marshall: testSerializer.marshall });
+        .harness();
 
       await sendEvent({
         records: [
@@ -387,7 +380,7 @@ describe('DynamoStreamHandler', () => {
       overrideLogger.child.mockImplementation(() => overrideLogger);
       const { sendEvent } = new DynamoStreamHandler({
         logger,
-        unmarshall: testSerializer.unmarshall,
+        parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
       })
         .onInsert((ctx) => {
@@ -395,7 +388,6 @@ describe('DynamoStreamHandler', () => {
           ctx.dataSources.doSomething((ctx as any).testValue);
         })
         .harness({
-          marshall: testSerializer.marshall,
           logger: overrideLogger as any,
           createRunContext: () => ({ dataSources, testValue }),
         });
@@ -414,12 +406,12 @@ describe('DynamoStreamHandler', () => {
   test('generates a correlation id', async () => {
     const { sendEvent } = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: (ctx) => {
         expect(typeof ctx.correlationId === 'string').toBe(true);
         return {};
       },
-    }).harness({ marshall: () => ({}) });
+    }).harness();
 
     await sendEvent({ records: [] });
 
@@ -433,7 +425,7 @@ describe('DynamoStreamHandler', () => {
   describe('error scenarios', () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      unmarshall: testSerializer.unmarshall,
+      parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     }).lambda();
 
@@ -467,7 +459,10 @@ describe('DynamoStreamHandler', () => {
       await lambda(
         {
           Records: [
-            { eventName: 'MODIFY', dynamodb: { OldImage: { marshalled: {} } } },
+            {
+              eventName: 'MODIFY',
+              dynamodb: { OldImage: { id: { S: 'test-id' } } },
+            },
           ],
         },
         {} as any,
@@ -484,7 +479,10 @@ describe('DynamoStreamHandler', () => {
       await lambda(
         {
           Records: [
-            { eventName: 'MODIFY', dynamodb: { NewImage: { marshalled: {} } } },
+            {
+              eventName: 'MODIFY',
+              dynamodb: { NewImage: { id: { S: 'test-id' } } },
+            },
           ],
         },
         {} as any,

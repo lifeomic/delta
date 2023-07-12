@@ -16,8 +16,8 @@ import { DynamoStreamHandler } from '@lifeomic/delta';
 
 const stream = new DynamoStreamHandler({
   logger,
-  unmarshall: (object) => {
-    /* ... unmarshall from unknown stream format -> your custom type ... */
+  parse: (item) => {
+    // parse the item using your custom logic, e.g. using zod or ajv.
     return { id: object.id };
   },
   createRunContext: () => {
@@ -27,7 +27,7 @@ const stream = new DynamoStreamHandler({
 })
   .onInsert(async (ctx, entity) => {
     // INSERT actions receive a single strongly typed new entities
-    // (entities are typed based on the `unmarshall` function)
+    // (entities are typed based on the `parse` function)
     entity.id;
 
     // `ctx` contains the nice result of `createRunContext`
@@ -67,9 +67,6 @@ const context = {
 }
 
 const harness = stream.harness({
-  marshall: () => {
-    /* marshall from your custom type -> stream format */
-  },
   /* optionally override the logger */
   logger,
   createRunContext: () => {
@@ -103,7 +100,7 @@ import { SQSMessageHandler } from '@lifeomic/delta';
 const queue = new SQSMessageHandler({
   logger,
   parseMessage: (message) => {
-    /* ... unmarshall from message string -> your custom type ... */
+    /* ... parse from message string -> your custom type ... */
     return JSON.parse(message);
   },
   createRunContext: () => {
@@ -137,7 +134,7 @@ const context = {
 
 const harness = queue.harness({
   stringifyMessage: (message) => {
-    /* marshall from your custom type -> string */
+    /* stringify from your custom type -> string */
     return JSON.stringify(message)
   },
   /* optionally override the logger */

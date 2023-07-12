@@ -1,6 +1,7 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoDBStreamEvent, DynamoDBStreamHandler } from 'aws-lambda';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { BaseContext, withHealthCheckHandling } from './utils';
 
 export type DynamoStreamHandlerConfig<Entity, Context> = {
@@ -9,10 +10,12 @@ export type DynamoStreamHandlerConfig<Entity, Context> = {
    */
   logger: LoggerInterface;
   /**
-   * A function for unmarshalling images from the stream
-   * format -> your custom type.
+   * A function for parsing images from the stream into your custom type.
+   *
+   * The `object` parameter is an _already unmarshalled_ version of the Dynamo
+   * record.
    */
-  unmarshall: (object: any) => Entity;
+  parse: (object: unknown) => Entity;
   /**
    * Create a "context" for the lambda execution. (e.g. "data sources")
    */
@@ -42,16 +45,11 @@ type InternalActionList<Entity, Context> = {
 };
 
 /* -- Test Harness Types -- */
-export type DynamoStreamHandlerHarnessConfig<Entity, Context> = {
+export type DynamoStreamHandlerHarnessConfig<Context> = {
   /**
    * An optional override for the logger.
    */
   logger?: LoggerInterface;
-
-  /**
-   * A function for marshalling entities into stream-compatible objects.
-   */
-  marshall: (entity: Entity) => any;
 
   /**
    * An optional override for creating the run context.
@@ -100,7 +98,7 @@ export class DynamoStreamHandler<Entity, Context> {
     >,
   ): DynamoStreamHandler<Entity, Context> {
     const copy = new DynamoStreamHandler({
-      unmarshall: this.config.unmarshall,
+      parse: this.config.parse,
       logger: overrides.logger ?? this.config.logger,
       createRunContext:
         overrides.createRunContext ?? this.config.createRunContext,
@@ -186,11 +184,11 @@ export class DynamoStreamHandler<Entity, Context> {
         // Unmarshall the entities.
         const oldEntity =
           record.dynamodb.OldImage &&
-          this.config.unmarshall(record.dynamodb.OldImage);
+          this.config.parse(unmarshall(record.dynamodb.OldImage));
 
         const newEntity =
           record.dynamodb.NewImage &&
-          this.config.unmarshall(record.dynamodb.NewImage);
+          this.config.parse(unmarshall(record.dynamodb.NewImage));
 
         // Handle INSERT events -- invoke the INSERT actions in order.
         if (record.eventName === 'INSERT') {
@@ -253,15 +251,10 @@ export class DynamoStreamHandler<Entity, Context> {
    * Returns a test harness for exercising the handler, with an optional
    * overriden context.
    */
-  harness({
-    logger,
-    marshall,
-    createRunContext,
-  }: DynamoStreamHandlerHarnessConfig<
-    Entity,
-    Context
-  >): DynamoStreamHandlerHarnessContext<Entity> {
-    const lambda = this.withOverrides({ logger, createRunContext }).lambda();
+  harness(
+    options?: DynamoStreamHandlerHarnessConfig<Context>,
+  ): DynamoStreamHandlerHarnessContext<Entity> {
+    const lambda = this.withOverrides(options ?? {}).lambda();
 
     return {
       sendEvent: async (event) => {
