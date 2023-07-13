@@ -113,8 +113,8 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'MODIFY',
             dynamodb: {
-              OldImage: marshall({ id: 'old-modify' }),
-              NewImage: marshall({ id: 'new-modify' }),
+              OldImage: marshall({ id: 'old-modify' }) as any,
+              NewImage: marshall({ id: 'new-modify' }) as any,
             },
           },
         ],
@@ -147,7 +147,7 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: marshall({ id: 'old-remove' }),
+              OldImage: marshall({ id: 'old-remove' }) as any,
             },
           },
         ],
@@ -189,20 +189,20 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'INSERT',
             dynamodb: {
-              NewImage: marshall({ id: 'new-insert-varied-lambda' }),
+              NewImage: marshall({ id: 'new-insert-varied-lambda' }) as any,
             },
           },
           {
             eventName: 'MODIFY',
             dynamodb: {
-              OldImage: marshall({ id: 'old-modify-varied-lambda' }),
-              NewImage: marshall({ id: 'new-modify-varied-lambda' }),
+              OldImage: marshall({ id: 'old-modify-varied-lambda' }) as any,
+              NewImage: marshall({ id: 'new-modify-varied-lambda' }) as any,
             },
           },
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: marshall({ id: 'old-remove-varied-lambda' }),
+              OldImage: marshall({ id: 'old-remove-varied-lambda' }) as any,
             },
           },
           // A second remove event to test multiple events through a single action

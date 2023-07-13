@@ -23,6 +23,7 @@
     "build": "node build.js"
   },
   "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.369.0",
     "@lifeomic/eslint-config-standards": "^2.1.1",
     "@lifeomic/jest-config": "^1.1.2",
     "@lifeomic/logging": "^4.0.0",

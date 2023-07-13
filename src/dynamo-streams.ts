@@ -184,11 +184,13 @@ export class DynamoStreamHandler<Entity, Context> {
         // Unmarshall the entities.
         const oldEntity =
           record.dynamodb.OldImage &&
-          this.config.parse(unmarshall(record.dynamodb.OldImage));
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+          this.config.parse(unmarshall(record.dynamodb.OldImage as any));
 
         const newEntity =
           record.dynamodb.NewImage &&
-          this.config.parse(unmarshall(record.dynamodb.NewImage));
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+          this.config.parse(unmarshall(record.dynamodb.NewImage as any));
 
         // Handle INSERT events -- invoke the INSERT actions in order.
         if (record.eventName === 'INSERT') {
@@ -266,22 +268,22 @@ export class DynamoStreamHandler<Entity, Context> {
                   return {
                     eventName: 'INSERT',
                     dynamodb: {
-                      NewImage: marshall(record.entity),
+                      NewImage: marshall(record.entity) as any,
                     },
                   };
                 case 'modify':
                   return {
                     eventName: 'MODIFY',
                     dynamodb: {
-                      OldImage: marshall(record.oldEntity),
-                      NewImage: marshall(record.newEntity),
+                      OldImage: marshall(record.oldEntity) as any,
+                      NewImage: marshall(record.newEntity) as any,
                     },
                   };
                 case 'remove':
                   return {
                     eventName: 'REMOVE',
                     dynamodb: {
-                      OldImage: marshall(record.entity),
+                      OldImage: marshall(record.entity) as any,
                     },
                   };
               }
