@@ -4,7 +4,11 @@ import { DynamoStreamHandler } from './dynamo-streams';
 import { marshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
 
-const TestSchema = z.object({ id: z.string(), name: z.string().optional() });
+const TestSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  otherValue: z.string().optional(),
+});
 
 const testSerializer = {
   parse: (object: any) => TestSchema.parse(object),
@@ -170,16 +174,16 @@ describe('DynamoStreamHandler', () => {
     })
       // onInsert twice to test same event through multiple actions
       .onInsert((ctx, entity) => {
-        ctx.dataSources.doSomething(entity);
+        ctx.dataSources.doSomething('insert 1', entity);
       })
       .onInsert((ctx, entity) => {
-        ctx.dataSources.doSomething(entity);
+        ctx.dataSources.doSomething('insert 2', entity);
       })
       .onModify((ctx, oldEntity, newEntity) => {
-        ctx.dataSources.doSomething(oldEntity, newEntity);
+        ctx.dataSources.doSomething('modify', oldEntity, newEntity);
       })
       .onRemove((ctx, entity) => {
-        ctx.dataSources.doSomething(entity);
+        ctx.dataSources.doSomething('remove', entity);
       })
       .lambda();
 
@@ -189,27 +193,27 @@ describe('DynamoStreamHandler', () => {
           {
             eventName: 'INSERT',
             dynamodb: {
-              NewImage: marshall({ id: 'new-insert-varied-lambda' }) as any,
+              NewImage: marshall({ id: 'test-id-1' }) as any,
             },
           },
           {
             eventName: 'MODIFY',
             dynamodb: {
-              OldImage: marshall({ id: 'old-modify-varied-lambda' }) as any,
-              NewImage: marshall({ id: 'new-modify-varied-lambda' }) as any,
+              OldImage: marshall({ id: 'test-id-1' }) as any,
+              NewImage: marshall({ id: 'test-id-1', name: 'new name' }) as any,
             },
           },
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: marshall({ id: 'old-remove-varied-lambda' }) as any,
+              OldImage: marshall({ id: 'test-id-2' }) as any,
             },
           },
           // A second remove event to test multiple events through a single action
           {
             eventName: 'REMOVE',
             dynamodb: {
-              OldImage: marshall({ id: 'old-remove-varied-lambda-second' }),
+              OldImage: marshall({ id: 'test-id-0' }),
             },
           },
         ],
@@ -220,22 +224,23 @@ describe('DynamoStreamHandler', () => {
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(5);
 
-    expect(dataSources.doSomething).toHaveBeenNthCalledWith(1, {
-      id: 'new-insert-varied-lambda',
-    });
-    expect(dataSources.doSomething).toHaveBeenNthCalledWith(2, {
-      id: 'new-insert-varied-lambda',
+    expect(dataSources.doSomething).toHaveBeenNthCalledWith(1, 'insert 1', {
+      id: 'test-id-1',
     });
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
-      3,
-      { id: 'old-modify-varied-lambda' },
-      { id: 'new-modify-varied-lambda' },
+      2,
+      'modify',
+      { id: 'test-id-1' },
+      { id: 'test-id-1', name: 'new name' },
     );
-    expect(dataSources.doSomething).toHaveBeenNthCalledWith(4, {
-      id: 'old-remove-varied-lambda',
+    expect(dataSources.doSomething).toHaveBeenNthCalledWith(3, 'remove', {
+      id: 'test-id-2',
     });
-    expect(dataSources.doSomething).toHaveBeenNthCalledWith(5, {
-      id: 'old-remove-varied-lambda-second',
+    expect(dataSources.doSomething).toHaveBeenNthCalledWith(4, 'remove', {
+      id: 'test-id-0',
+    });
+    expect(dataSources.doSomething).toHaveBeenNthCalledWith(5, 'insert 2', {
+      id: 'test-id-1',
     });
   });
 
@@ -318,54 +323,55 @@ describe('DynamoStreamHandler', () => {
       })
         // onInsert twice to test same event through multiple actions
         .onInsert((ctx, entity) => {
-          ctx.dataSources.doSomething(entity);
+          ctx.dataSources.doSomething('insert 1', entity);
         })
         .onInsert((ctx, entity) => {
-          ctx.dataSources.doSomething(entity);
+          ctx.dataSources.doSomething('insert 2', entity);
         })
         .onModify((ctx, oldEntity, newEntity) => {
-          ctx.dataSources.doSomething(oldEntity, newEntity);
+          ctx.dataSources.doSomething('modify', oldEntity, newEntity);
         })
         .onRemove((ctx, entity) => {
-          ctx.dataSources.doSomething(entity);
+          ctx.dataSources.doSomething('remove', entity);
         })
         .harness();
 
       await sendEvent({
         records: [
-          { type: 'insert', entity: { id: 'new-insert-varied-harness' } },
+          { type: 'insert', entity: { id: 'test-id-1' } },
           {
             type: 'modify',
-            oldEntity: { id: 'old-modify-varied-harness' },
-            newEntity: { id: 'new-modify-varied-harness' },
+            oldEntity: { id: 'test-id-1' },
+            newEntity: { id: 'test-id-1', name: 'new name' },
           },
-          { type: 'remove', entity: { id: 'old-remove-varied-harness' } },
+          { type: 'remove', entity: { id: 'test-id-2' } },
           // A second remove event to test multiple events through a single action
           {
             type: 'remove',
-            entity: { id: 'old-remove-varied-harness-second' },
+            entity: { id: 'test-id-0' },
           },
         ],
       });
 
       expect(dataSources.doSomething).toHaveBeenCalledTimes(5);
 
-      expect(dataSources.doSomething).toHaveBeenNthCalledWith(1, {
-        id: 'new-insert-varied-harness',
-      });
-      expect(dataSources.doSomething).toHaveBeenNthCalledWith(2, {
-        id: 'new-insert-varied-harness',
+      expect(dataSources.doSomething).toHaveBeenNthCalledWith(1, 'insert 1', {
+        id: 'test-id-1',
       });
       expect(dataSources.doSomething).toHaveBeenNthCalledWith(
-        3,
-        { id: 'old-modify-varied-harness' },
-        { id: 'new-modify-varied-harness' },
+        2,
+        'modify',
+        { id: 'test-id-1' },
+        { id: 'test-id-1', name: 'new name' },
       );
-      expect(dataSources.doSomething).toHaveBeenNthCalledWith(4, {
-        id: 'old-remove-varied-harness',
+      expect(dataSources.doSomething).toHaveBeenNthCalledWith(3, 'remove', {
+        id: 'test-id-2',
       });
-      expect(dataSources.doSomething).toHaveBeenNthCalledWith(5, {
-        id: 'old-remove-varied-harness-second',
+      expect(dataSources.doSomething).toHaveBeenNthCalledWith(4, 'remove', {
+        id: 'test-id-0',
+      });
+      expect(dataSources.doSomething).toHaveBeenNthCalledWith(5, 'insert 2', {
+        id: 'test-id-1',
       });
     });
 
@@ -506,6 +512,229 @@ describe('DynamoStreamHandler', () => {
         expect.anything(),
         'No OldImage was defined for a REMOVE event',
       );
+    });
+  });
+
+  describe('parallelization', () => {
+    const wait = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+
+    test('processes events in parallel, while maintaining ordering by Keys', async () => {
+      const mocks = {
+        insert: { started: jest.fn(), finished: jest.fn() },
+        modify: { started: jest.fn(), finished: jest.fn() },
+        remove: { started: jest.fn(), finished: jest.fn() },
+      };
+
+      const handler = new DynamoStreamHandler({
+        logger,
+        parse: testSerializer.parse,
+        createRunContext: () => ({}),
+      })
+        .onInsert(async (ctx, item) => {
+          mocks.insert.started(Date.now(), item);
+          await wait(100);
+          mocks.insert.finished(Date.now(), item);
+        })
+        .onModify(async (ctx, oldItem, newItem) => {
+          mocks.modify.started(Date.now(), oldItem, newItem);
+          await wait(100);
+          mocks.modify.finished(Date.now(), oldItem, newItem);
+        })
+        .onRemove(async (ctx, item) => {
+          mocks.remove.started(Date.now(), item);
+          await wait(100);
+          mocks.remove.finished(Date.now(), item);
+        })
+        .lambda();
+
+      const start = Date.now();
+
+      await handler(
+        {
+          Records: [
+            {
+              eventName: 'INSERT',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-1', name: 'test-name-1' }) as any,
+                NewImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-1',
+                }) as any,
+              },
+            },
+            {
+              eventName: 'MODIFY',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-1', name: 'test-name-1' }) as any,
+                NewImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-1',
+                }) as any,
+                OldImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-2',
+                }) as any,
+              },
+            },
+            {
+              eventName: 'MODIFY',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-2', name: 'test-name-1' }) as any,
+                NewImage: marshall({
+                  id: 'test-id-2',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-1',
+                }) as any,
+                OldImage: marshall({
+                  id: 'test-id-2',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-2',
+                }) as any,
+              },
+            },
+            {
+              eventName: 'REMOVE',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-1', name: 'test-name-1' }) as any,
+                OldImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-2',
+                }) as any,
+              },
+            },
+          ],
+        },
+        {} as any,
+        null as any,
+      );
+
+      const end = Date.now();
+
+      // This assertion confirms that the group doesn't process in less than 200ms.
+      // If it did, then some of the ordered events would be parallelized, which would be bad.
+      expect(end - start).toBeGreaterThanOrEqual(300);
+
+      // This assertions confirms that there is some parallelization happening.
+      expect(end - start).toBeLessThan(400);
+
+      // Now, let's also explicitly assert that the events were processed in order.
+      const insertFinishedTime = mocks.insert.finished.mock.calls.find(
+        ([, { id }]) => id === 'test-id-1',
+      )[0];
+      const modifyStartedTime = mocks.modify.started.mock.calls.find(
+        ([, { id }]) => id === 'test-id-1',
+      )[0];
+
+      expect(modifyStartedTime).toBeGreaterThanOrEqual(insertFinishedTime);
+
+      const modifyFinishedTime = mocks.modify.finished.mock.calls.find(
+        ([, { id }]) => id === 'test-id-1',
+      )[0];
+
+      const removeStartedTime = mocks.remove.started.mock.calls.find(
+        ([, { id }]) => id === 'test-id-1',
+      )[0];
+
+      expect(removeStartedTime).toBeGreaterThanOrEqual(modifyFinishedTime);
+    });
+
+    test('concurrency can be set to 1, which will result in serial processing', async () => {
+      const processMock = jest.fn();
+
+      const handler = new DynamoStreamHandler({
+        logger,
+        parse: testSerializer.parse,
+        createRunContext: () => ({}),
+        concurrency: 1,
+      })
+        .onInsert(async (ctx, item) => {
+          processMock('insert', item);
+          await wait(100);
+        })
+        .onModify(async (ctx, oldItem, newItem) => {
+          processMock('modify', oldItem, newItem);
+          await wait(100);
+        })
+        .onRemove(async (ctx, item) => {
+          processMock('remove', item);
+          await wait(100);
+        })
+        .lambda();
+
+      const start = Date.now();
+
+      await handler(
+        {
+          Records: [
+            {
+              eventName: 'INSERT',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-1', name: 'test-name-1' }) as any,
+                NewImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-1',
+                }) as any,
+              },
+            },
+            {
+              eventName: 'MODIFY',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-1', name: 'test-name-1' }) as any,
+                OldImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-1',
+                }) as any,
+                NewImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-2',
+                }) as any,
+              },
+            },
+            {
+              eventName: 'MODIFY',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-2', name: 'test-name-1' }) as any,
+                OldImage: marshall({
+                  id: 'test-id-2',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-1',
+                }) as any,
+                NewImage: marshall({
+                  id: 'test-id-2',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-2',
+                }) as any,
+              },
+            },
+            {
+              eventName: 'REMOVE',
+              dynamodb: {
+                Keys: marshall({ id: 'test-id-1', name: 'test-name-1' }) as any,
+                OldImage: marshall({
+                  id: 'test-id-1',
+                  name: 'test-name-1',
+                  otherValue: 'test-value-2',
+                }) as any,
+              },
+            },
+          ],
+        },
+        {} as any,
+        null as any,
+      );
+
+      const end = Date.now();
+
+      // This assertions provides some reasonable confirmation that parallelization is not happening.
+      expect(end - start).toBeGreaterThanOrEqual(400);
     });
   });
 });

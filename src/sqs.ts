@@ -1,7 +1,11 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { SQSEvent, Context as AWSContext } from 'aws-lambda';
-import { BaseContext, withHealthCheckHandling } from './utils';
+import {
+  BaseContext,
+  processWithOrdering,
+  withHealthCheckHandling,
+} from './utils';
 
 export type SQSMessageHandlerConfig<Message, Context> = {
   /**
@@ -16,6 +20,12 @@ export type SQSMessageHandlerConfig<Message, Context> = {
    * Create a "context" for the lambda execution. (e.g. "data sources")
    */
   createRunContext: (base: BaseContext) => Context | Promise<Context>;
+  /**
+   * The maximum concurrency for processing messages.
+   *
+   * @default 5
+   */
+  concurrency?: number;
 };
 
 export type SQSMessageAction<Message, Context> = (
@@ -81,19 +91,31 @@ export class SQSMessageHandler<Message, Context> {
 
       // 2. Process all the records.
       context.logger.info({ event }, 'Processing SQS topic message');
-      for (const record of event.Records) {
-        const messageLogger = context.logger.child({
-          messageId: record.messageId,
-        });
 
-        const parsedMessage = this.config.parseMessage(record.body);
+      await processWithOrdering(
+        {
+          items: event.Records,
+          // If there is not a MessageGroupId, then we can don't care about
+          // the ordering for the event. We can just generate a UUID for the
+          // ordering key.
+          orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
+          concurrency: this.config.concurrency ?? 5,
+          stopOnError: false,
+        },
+        async (record) => {
+          const messageLogger = context.logger.child({
+            messageId: record.messageId,
+          });
 
-        for (const action of this.messageActions) {
-          await action({ ...context, logger: messageLogger }, parsedMessage);
-        }
+          const parsedMessage = this.config.parseMessage(record.body);
 
-        messageLogger.info('Successfully processed message');
-      }
+          for (const action of this.messageActions) {
+            await action({ ...context, logger: messageLogger }, parsedMessage);
+          }
+
+          messageLogger.info('Successfully processed message');
+        },
+      );
 
       context.logger.info('Succesfully processed all messages');
     });
@@ -120,7 +142,11 @@ export class SQSMessageHandler<Message, Context> {
             (msg) =>
               // We don't need to mock every field on this event -- there are lots.
               // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-              ({ messageId: uuid(), body: stringifyMessage(msg) } as any),
+              ({
+                attributes: {},
+                messageId: uuid(),
+                body: stringifyMessage(msg),
+              } as any),
           ),
         };
 
