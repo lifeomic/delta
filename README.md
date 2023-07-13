@@ -18,7 +18,7 @@ const stream = new DynamoStreamHandler({
   logger,
   parse: (item) => {
     // parse the item using your custom logic, e.g. using zod or ajv.
-    return { id: object.id };
+    return { id: item.id };
   },
   createRunContext: () => {
     /* ... create the "context", e.g. data sources ... */
