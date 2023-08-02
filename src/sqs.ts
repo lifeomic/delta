@@ -95,7 +95,7 @@ export class SQSMessageHandler<Message, Context> {
       await processWithOrdering(
         {
           items: event.Records,
-          // If there is not a MessageGroupId, then we can don't care about
+          // If there is not a MessageGroupId, then we don't care about
           // the ordering for the event. We can just generate a UUID for the
           // ordering key.
           orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),

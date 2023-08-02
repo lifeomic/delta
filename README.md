@@ -173,4 +173,4 @@ In `DynamoStreamHandler`, events for the same _key_ will always be processed ser
 
 In `SQSMessageHandler`, events with the same `MessageGroupId` will always processed serially -- events with different `MessageGroupId` values will be processed in parallel.
 
-**Note**: when using a `concurrency` value of `1`, the ordering semantics above will still be preserved. But, events that do _not_ need to be ordered will not necessarily be processed in the same order they were received in the batch.
+**Note**: while the ordering semantics above will always be preserved, events that do _not_ need to be ordered will not necessarily be processed in the same order they were received in the batch (even when using a `concurrency` value of `1`).

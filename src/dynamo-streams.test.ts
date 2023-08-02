@@ -615,7 +615,7 @@ describe('DynamoStreamHandler', () => {
 
       const end = Date.now();
 
-      // This assertion confirms that the group doesn't process in less than 200ms.
+      // This assertion confirms that the group doesn't process in less than 300ms.
       // If it did, then some of the ordered events would be parallelized, which would be bad.
       expect(end - start).toBeGreaterThanOrEqual(300);
 

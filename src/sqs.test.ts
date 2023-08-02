@@ -284,8 +284,16 @@ describe('SQSMessageHandler', () => {
             },
             { attributes: {}, body: JSON.stringify({ data: 'test-event-2' }) },
             {
+              attributes: { MessageGroupId: 'group-id-2' },
+              body: JSON.stringify({ data: 'test-event-other-1' }),
+            },
+            {
               attributes: { MessageGroupId: 'group-id' },
               body: JSON.stringify({ data: 'test-event-3' }),
+            },
+            {
+              attributes: { MessageGroupId: 'group-id-2' },
+              body: JSON.stringify({ data: 'test-event-other-2' }),
             },
             { attributes: {}, body: JSON.stringify({ data: 'test-event-4' }) },
           ] as any,
@@ -299,8 +307,10 @@ describe('SQSMessageHandler', () => {
       // If it did, then the events would be fully parallelized, which would be bad.
       expect(end - start).toBeGreaterThan(200);
 
-      // Now, let's also assert that event 3 was processed _after_ the end of event 1.
+      // This assertion confirms that there is at least some parallelization happening.
+      expect(end - start).toBeLessThanOrEqual(450);
 
+      // Now, let's also assert that event 3 was processed _after_ the end of event 1.
       const event1FinishedTime = messageFinished.mock.calls.find(
         (call) => call[0].data === 'test-event-1',
       )[1];
@@ -310,6 +320,18 @@ describe('SQSMessageHandler', () => {
       )[1];
 
       expect(event3StartedTime).toBeGreaterThanOrEqual(event1FinishedTime);
+
+      const eventOther1FinishedTime = messageFinished.mock.calls.find(
+        (call) => call[0].data === 'test-event-other-1',
+      )[1];
+
+      const eventOther2StartedTime = messageStarted.mock.calls.find(
+        (call) => call[0].data === 'test-event-other-2',
+      )[1];
+
+      expect(eventOther2StartedTime).toBeGreaterThanOrEqual(
+        eventOther1FinishedTime,
+      );
     });
   });
 });

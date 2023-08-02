@@ -25,12 +25,6 @@ export const withHealthCheckHandling =
     return handler(event, context);
   };
 
-const groupIntoLists = <T>(arr: T[], predicate: (item: T) => string): T[][] => {
-  const grouped = groupBy(arr, (r) => predicate(r));
-  const entries = Object.entries(grouped);
-  return entries.map(([, items]) => items);
-};
-
 export type ProcessWithOrderingParams<T> = {
   items: T[];
   orderBy: (msg: T) => string;
@@ -65,7 +59,7 @@ export const processWithOrdering = async <T>(
   params: ProcessWithOrderingParams<T>,
   process: (item: T) => Promise<void>,
 ) => {
-  const lists = groupIntoLists(params.items, params.orderBy);
+  const lists = Object.values(groupBy(params.items, params.orderBy));
   await pMap(
     lists,
     async (list) => {

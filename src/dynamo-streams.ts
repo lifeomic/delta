@@ -81,22 +81,6 @@ export type TestEvent<Entity> = {
 };
 
 /**
- * Stringifies an unmarshalled DynamoDB key deterministically, regardless
- * of ordering of keys.
- */
-const deterministicStringify = (obj: {
-  [key: string]: string | number | boolean;
-}): string =>
-  JSON.stringify(
-    Object.keys(obj)
-      .sort()
-      .reduce((result, key) => {
-        result[key] = obj[key];
-        return result;
-      }, {} as any),
-  );
-
-/**
  * An abstraction for a DynamoDB stream handler.
  */
 export class DynamoStreamHandler<Entity, Context> {
@@ -200,13 +184,26 @@ export class DynamoStreamHandler<Entity, Context> {
         {
           items: event.Records,
           orderBy: (record) => {
+            const KeyObject = record.dynamodb?.Keys;
+
             // This scenario should only ever happen in tests.
-            if (!record.dynamodb?.Keys) {
+            if (!KeyObject) {
               return uuid();
             }
-            return deterministicStringify(
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-              unmarshall(record.dynamodb.Keys as any),
+
+            // We need to order by key -- so, just stringify the key.
+            //
+            // But, add custom logic to ensure that the key object is stringified
+            // determinstically, regardless of the order of its keys. (e.g. we
+            // should stringify { a: 1, b: 2 } and { b: 2, a: 1 } to the same string)
+            //
+            // It's possible that AWS already ensures that the keys are deterministically
+            // ordered, and therefore we don't need to do this. But we add this logic just
+            // to be extra sure.
+            return JSON.stringify(
+              Object.keys(KeyObject)
+                .sort()
+                .map((key) => [key, KeyObject[key]]),
             );
           },
           concurrency: this.config.concurrency ?? 5,
