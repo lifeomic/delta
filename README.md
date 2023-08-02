@@ -167,7 +167,7 @@ test('something', async () => {
 
 By default, the abstractions in `@lifeomic/delta` (`DynamoStreamHandler` and `SQSMessageHandler`) will process events in parallel. To control the parallelization, specify a `concurrency` value when creating the handler.
 
-These abstractions also guarantee automatically ensure that within a batch of events correct _ordering_ is maintained according to the ordering semantics of the upstream event source, even when processing in parallel.
+These abstractions also ensure that within a batch of events correct _ordering_ of events is maintained according to the ordering semantics of the upstream event source, even when processing in parallel.
 
 In `DynamoStreamHandler`, events for the same _key_ will always be processed serially -- events from different keys will be processed in parallel.
 
