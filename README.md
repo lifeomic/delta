@@ -24,6 +24,8 @@ const stream = new DynamoStreamHandler({
     /* ... create the "context", e.g. data sources ... */
     return { doSomething: () => null };
   },
+  // Optionally specify a concurrency setting for processing events.
+  concurrency: 5,
 })
   .onInsert(async (ctx, entity) => {
     // INSERT actions receive a single strongly typed new entities
@@ -107,6 +109,8 @@ const queue = new SQSMessageHandler({
     /* ... create the "context", e.g. data sources ... */
     return { doSomething: () => null };
   },
+  // Optionally specify a concurrency setting for processing events.
+  concurrency: 5,
 })
   .onMessage(async (ctx, message) => {
     // `ctx` contains the nice result of `createRunContext`:
@@ -158,3 +162,15 @@ test('something', async () => {
   expect(context.doSomething).toHaveBeenCalledTimes(3)
 })
 ```
+
+### Parallel Processing + Ordering
+
+By default, the abstractions in `@lifeomic/delta` (`DynamoStreamHandler` and `SQSMessageHandler`) will process events in parallel. To control the parallelization, specify a `concurrency` value when creating the handler.
+
+These abstractions also ensure that within a batch of events correct _ordering_ of events is maintained according to the ordering semantics of the upstream event source, even when processing in parallel.
+
+In `DynamoStreamHandler`, events for the same _key_ will always be processed serially -- events from different keys will be processed in parallel.
+
+In `SQSMessageHandler`, events with the same `MessageGroupId` will always processed serially -- events with different `MessageGroupId` values will be processed in parallel.
+
+**Note**: while the ordering semantics above will always be preserved, events that do _not_ need to be ordered will not necessarily be processed in the same order they were received in the batch (even when using a `concurrency` value of `1`).

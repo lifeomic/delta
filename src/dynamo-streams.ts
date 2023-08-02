@@ -2,7 +2,11 @@ import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoDBStreamEvent, DynamoDBStreamHandler } from 'aws-lambda';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-import { BaseContext, withHealthCheckHandling } from './utils';
+import {
+  BaseContext,
+  processWithOrdering,
+  withHealthCheckHandling,
+} from './utils';
 
 export type DynamoStreamHandlerConfig<Entity, Context> = {
   /**
@@ -20,6 +24,12 @@ export type DynamoStreamHandlerConfig<Entity, Context> = {
    * Create a "context" for the lambda execution. (e.g. "data sources")
    */
   createRunContext: (base: BaseContext) => Context | Promise<Context>;
+  /**
+   * The maximum concurrency for processing records.
+   *
+   * @default 5
+   */
+  concurrency?: number;
 };
 
 export type InsertAction<Entity, Context> = (
@@ -170,82 +180,111 @@ export class DynamoStreamHandler<Entity, Context> {
 
       context.logger.info({ event }, 'Processing DynamoDB stream event');
 
-      // Iterate through every event.
-      for (const record of event.Records) {
-        const recordLogger = this.config.logger.child({ record });
-        if (!record.dynamodb) {
-          recordLogger.error(
-            { record },
-            'The dynamodb property was not present on event',
-          );
-          continue;
-        }
+      await processWithOrdering(
+        {
+          items: event.Records,
+          orderBy: (record) => {
+            const KeyObject = record.dynamodb?.Keys;
 
-        // Unmarshall the entities.
-        const oldEntity =
-          record.dynamodb.OldImage &&
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          this.config.parse(unmarshall(record.dynamodb.OldImage as any));
+            // This scenario should only ever happen in tests.
+            if (!KeyObject) {
+              return uuid();
+            }
 
-        const newEntity =
-          record.dynamodb.NewImage &&
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          this.config.parse(unmarshall(record.dynamodb.NewImage as any));
-
-        // Handle INSERT events -- invoke the INSERT actions in order.
-        if (record.eventName === 'INSERT') {
-          if (!newEntity) {
+            // We need to order by key -- so, just stringify the key.
+            //
+            // But, add custom logic to ensure that the key object is stringified
+            // determinstically, regardless of the order of its keys. (e.g. we
+            // should stringify { a: 1, b: 2 } and { b: 2, a: 1 } to the same string)
+            //
+            // It's possible that AWS already ensures that the keys are deterministically
+            // ordered, and therefore we don't need to do this. But we add this logic just
+            // to be extra sure.
+            return JSON.stringify(
+              Object.keys(KeyObject)
+                .sort()
+                .map((key) => [key, KeyObject[key]]),
+            );
+          },
+          concurrency: this.config.concurrency ?? 5,
+          stopOnError: false,
+        },
+        async (record) => {
+          const recordLogger = this.config.logger.child({ record });
+          if (!record.dynamodb) {
             recordLogger.error(
               { record },
-              'No NewImage was defined for an INSERT event',
+              'The dynamodb property was not present on event',
             );
-            continue;
+            return;
           }
 
-          for (const action of this.actions.insert) {
-            await action({ ...context, logger: recordLogger }, newEntity);
-          }
-        }
-        // Handle MODIFY events -- invoke the MODIFY actions in order.
-        else if (record.eventName === 'MODIFY') {
-          if (!oldEntity) {
-            recordLogger.error(
-              { record },
-              'No OldImage was defined for a MODIFY event',
-            );
-            continue;
-          }
-          if (!newEntity) {
-            recordLogger.error(
-              { record },
-              'No NewImage was defined for a MODIFY event',
-            );
-            continue;
-          }
+          // Unmarshall the entities.
+          const oldEntity =
+            record.dynamodb.OldImage &&
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            this.config.parse(unmarshall(record.dynamodb.OldImage as any));
 
-          for (const action of this.actions.modify) {
-            await action(
-              { ...context, logger: recordLogger },
-              oldEntity,
-              newEntity,
-            );
-          }
-        }
-        // Handle REMOVE events -- invoke the REMOVE actions in order.
-        else if (record.eventName === 'REMOVE') {
-          if (!oldEntity) {
-            recordLogger.error(
-              { record },
-              'No OldImage was defined for a REMOVE event',
-            );
-            continue;
-          }
+          const newEntity =
+            record.dynamodb.NewImage &&
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            this.config.parse(unmarshall(record.dynamodb.NewImage as any));
 
-          for (const action of this.actions.remove) {
-            await action({ ...context, logger: recordLogger }, oldEntity);
+          // Handle INSERT events -- invoke the INSERT actions in order.
+          if (record.eventName === 'INSERT') {
+            if (!newEntity) {
+              recordLogger.error(
+                { record },
+                'No NewImage was defined for an INSERT event',
+              );
+              return;
+            }
+
+            for (const action of this.actions.insert) {
+              await action({ ...context, logger: recordLogger }, newEntity);
+            }
           }
-        }
-      }
+          // Handle MODIFY events -- invoke the MODIFY actions in order.
+          else if (record.eventName === 'MODIFY') {
+            if (!oldEntity) {
+              recordLogger.error(
+                { record },
+                'No OldImage was defined for a MODIFY event',
+              );
+              return;
+            }
+            if (!newEntity) {
+              recordLogger.error(
+                { record },
+                'No NewImage was defined for a MODIFY event',
+              );
+              return;
+            }
+
+            for (const action of this.actions.modify) {
+              await action(
+                { ...context, logger: recordLogger },
+                oldEntity,
+                newEntity,
+              );
+            }
+          }
+          // Handle REMOVE events -- invoke the REMOVE actions in order.
+          else if (record.eventName === 'REMOVE') {
+            if (!oldEntity) {
+              recordLogger.error(
+                { record },
+                'No OldImage was defined for a REMOVE event',
+              );
+              return;
+            }
+
+            for (const action of this.actions.remove) {
+              await action({ ...context, logger: recordLogger }, oldEntity);
+            }
+          }
+        },
+      );
     });
   }
 

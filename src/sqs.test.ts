@@ -59,7 +59,11 @@ describe('SQSMessageHandler', () => {
     }).lambda();
 
     await lambda(
-      { Records: [{ body: JSON.stringify({ data: 'test-event-1' }) }] } as any,
+      {
+        Records: [
+          { attributes: {}, body: JSON.stringify({ data: 'test-event-1' }) },
+        ],
+      } as any,
       {} as any,
     );
 
@@ -79,6 +83,7 @@ describe('SQSMessageHandler', () => {
       logger,
       parseMessage: testSerializer.parseMessage,
       createRunContext: () => dataSources,
+      concurrency: 1,
     })
       .onMessage((ctx, message) => {
         ctx.doSomething('first-handler', message);
@@ -91,10 +96,10 @@ describe('SQSMessageHandler', () => {
     await lambda(
       {
         Records: [
-          { body: JSON.stringify({ data: 'test-event-1' }) },
-          { body: JSON.stringify({ data: 'test-event-2' }) },
-          { body: JSON.stringify({ data: 'test-event-3' }) },
-          { body: JSON.stringify({ data: 'test-event-4' }) },
+          { attributes: {}, body: JSON.stringify({ data: 'test-event-1' }) },
+          { attributes: {}, body: JSON.stringify({ data: 'test-event-2' }) },
+          { attributes: {}, body: JSON.stringify({ data: 'test-event-3' }) },
+          { attributes: {}, body: JSON.stringify({ data: 'test-event-4' }) },
         ],
       } as any,
       {} as any,
@@ -212,6 +217,121 @@ describe('SQSMessageHandler', () => {
       expect(overrideLogger.info).toHaveBeenCalledWith(testValue);
 
       expect(dataSources.doSomething).toHaveBeenCalledWith(testValue);
+    });
+  });
+
+  const wait = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  describe('parallelization', () => {
+    test('processes events in parallel', async () => {
+      const handler = new SQSMessageHandler({
+        logger,
+        parseMessage: testSerializer.parseMessage,
+        createRunContext: () => ({}),
+      })
+        .onMessage(async () => {
+          // We'll wait 100ms per event, then use that to make timing
+          // assertions below.
+          await wait(100);
+        })
+        .lambda();
+
+      const start = Date.now();
+
+      await handler(
+        {
+          Records: [
+            { attributes: {}, body: JSON.stringify({ data: 'test-event-1' }) },
+            { attributes: {}, body: JSON.stringify({ data: 'test-event-2' }) },
+            { attributes: {}, body: JSON.stringify({ data: 'test-event-3' }) },
+          ] as any,
+        },
+        {} as any,
+      );
+
+      const end = Date.now();
+
+      // This assertion confirms there is parallel processing.
+      expect(end - start).toBeLessThan(200);
+    });
+
+    test('maintains ordering by MessageGroupId', async () => {
+      const messageStarted = jest.fn();
+      const messageFinished = jest.fn();
+      const handler = new SQSMessageHandler({
+        logger,
+        parseMessage: testSerializer.parseMessage,
+        createRunContext: () => ({}),
+      })
+        .onMessage(async (ctx, msg) => {
+          messageStarted(msg, Date.now());
+          // We'll wait 100ms per event, then use that to make timing
+          // assertions below.
+          await wait(100);
+          messageFinished(msg, Date.now());
+        })
+        .lambda();
+
+      const start = Date.now();
+
+      await handler(
+        {
+          Records: [
+            {
+              attributes: { MessageGroupId: 'group-id' },
+              body: JSON.stringify({ data: 'test-event-1' }),
+            },
+            { attributes: {}, body: JSON.stringify({ data: 'test-event-2' }) },
+            {
+              attributes: { MessageGroupId: 'group-id-2' },
+              body: JSON.stringify({ data: 'test-event-other-1' }),
+            },
+            {
+              attributes: { MessageGroupId: 'group-id' },
+              body: JSON.stringify({ data: 'test-event-3' }),
+            },
+            {
+              attributes: { MessageGroupId: 'group-id-2' },
+              body: JSON.stringify({ data: 'test-event-other-2' }),
+            },
+            { attributes: {}, body: JSON.stringify({ data: 'test-event-4' }) },
+          ] as any,
+        },
+        {} as any,
+      );
+
+      const end = Date.now();
+
+      // This assertion confirms that the group doesn't process in less than 200ms.
+      // If it did, then the events would be fully parallelized, which would be bad.
+      expect(end - start).toBeGreaterThan(200);
+
+      // This assertion confirms that there is at least some parallelization happening.
+      expect(end - start).toBeLessThanOrEqual(450);
+
+      // Now, let's also assert that event 3 was processed _after_ the end of event 1.
+      const event1FinishedTime = messageFinished.mock.calls.find(
+        (call) => call[0].data === 'test-event-1',
+      )[1];
+
+      const event3StartedTime = messageStarted.mock.calls.find(
+        (call) => call[0].data === 'test-event-3',
+      )[1];
+
+      expect(event3StartedTime).toBeGreaterThanOrEqual(event1FinishedTime);
+
+      const eventOther1FinishedTime = messageFinished.mock.calls.find(
+        (call) => call[0].data === 'test-event-other-1',
+      )[1];
+
+      const eventOther2StartedTime = messageStarted.mock.calls.find(
+        (call) => call[0].data === 'test-event-other-2',
+      )[1];
+
+      expect(eventOther2StartedTime).toBeGreaterThanOrEqual(
+        eventOther1FinishedTime,
+      );
     });
   });
 });
