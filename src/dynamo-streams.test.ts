@@ -2,7 +2,6 @@ import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoStreamHandler } from './dynamo-streams';
 import { marshall } from '@aws-sdk/util-dynamodb';
-// import { DynamoDBStreamEvent } from 'aws-lambda';
 import { z } from 'zod';
 
 const TestSchema = z.object({
