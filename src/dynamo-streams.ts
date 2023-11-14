@@ -1,6 +1,10 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
-import { DynamoDBStreamEvent, DynamoDBStreamHandler } from 'aws-lambda';
+import {
+  DynamoDBStreamEvent,
+  DynamoDBStreamHandler,
+  DynamoDBRecord
+} from 'aws-lambda';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import {
   BaseContext,
@@ -13,6 +17,11 @@ export type DynamoStreamHandlerConfig<Entity, Context> = {
    * A logger to use in the context.
    */
   logger: LoggerInterface;
+  /**
+   * A listing of keys within a dynamo record's images to obfuscate in logging
+   * output.
+   */
+  loggerObfuscateImageKeys?: string[];
   /**
    * A function for parsing images from the stream into your custom type.
    *
@@ -60,7 +69,6 @@ export type DynamoStreamHandlerHarnessConfig<Context> = {
    * An optional override for the logger.
    */
   logger?: LoggerInterface;
-
   /**
    * An optional override for creating the run context.
    */
@@ -69,6 +77,7 @@ export type DynamoStreamHandlerHarnessConfig<Context> = {
 
 export type DynamoStreamHandlerHarnessContext<Entity> = {
   sendEvent: (event: TestEvent<Entity>) => Promise<void>;
+  obfuscateEvent: (event: DynamoDBStreamEvent) => DynamoDBStreamEvent;
 };
 
 export type TestRecord<Entity> =
@@ -127,6 +136,50 @@ export class DynamoStreamHandler<Entity, Context> {
     return copy;
   }
 
+  private obfuscate(
+    blob: any,
+    keys: string[],
+  ): any {
+    if (blob === undefined) return undefined;
+    const obfuscated = blob;
+    keys.forEach(k => {
+      if (obfuscated[k]) {
+        obfuscated[k] = { S: 'obfuscated' };
+      }
+    });
+    return obfuscated;
+  }
+
+  private obfuscateRecord(
+    dynamoRecord: DynamoDBRecord
+  ): DynamoDBRecord {
+    if (this.config.loggerObfuscateImageKeys && dynamoRecord.dynamodb) {
+      return {
+        ...dynamoRecord,
+        dynamodb: {
+          ...dynamoRecord.dynamodb,
+          NewImage: this.obfuscate(
+            dynamoRecord.dynamodb.NewImage,
+            this.config.loggerObfuscateImageKeys
+          ),
+          OldImage: this.obfuscate(
+            dynamoRecord.dynamodb.OldImage,
+            this.config.loggerObfuscateImageKeys
+          ),
+        },
+      }
+    }
+    return dynamoRecord;
+  }
+
+  private obfuscateEvent(
+    dynamoEvent: DynamoDBStreamEvent
+  ): DynamoDBStreamEvent {
+    return {
+      Records: dynamoEvent.Records.map(r => this.obfuscateRecord(r)),
+    }
+  }
+
   /**
    * Adds an "INSERT" event handler.
    */
@@ -178,7 +231,10 @@ export class DynamoStreamHandler<Entity, Context> {
         ...base,
       };
 
-      context.logger.info({ event }, 'Processing DynamoDB stream event');
+      context.logger.info(
+        { event: this.obfuscateEvent(event) },
+        'Processing DynamoDB stream event'
+      );
 
       await processWithOrdering(
         {
@@ -194,7 +250,7 @@ export class DynamoStreamHandler<Entity, Context> {
             // We need to order by key -- so, just stringify the key.
             //
             // But, add custom logic to ensure that the key object is stringified
-            // determinstically, regardless of the order of its keys. (e.g. we
+            // deterministically, regardless of the order of its keys. (e.g. we
             // should stringify { a: 1, b: 2 } and { b: 2, a: 1 } to the same string)
             //
             // It's possible that AWS already ensures that the keys are deterministically
@@ -210,10 +266,11 @@ export class DynamoStreamHandler<Entity, Context> {
           stopOnError: false,
         },
         async (record) => {
-          const recordLogger = this.config.logger.child({ record });
+          const recordLogger = this.config.logger.child({
+            record: this.obfuscateRecord(record)
+          });
           if (!record.dynamodb) {
             recordLogger.error(
-              { record },
               'The dynamodb property was not present on event',
             );
             return;
@@ -234,7 +291,6 @@ export class DynamoStreamHandler<Entity, Context> {
           if (record.eventName === 'INSERT') {
             if (!newEntity) {
               recordLogger.error(
-                { record },
                 'No NewImage was defined for an INSERT event',
               );
               return;
@@ -248,14 +304,12 @@ export class DynamoStreamHandler<Entity, Context> {
           else if (record.eventName === 'MODIFY') {
             if (!oldEntity) {
               recordLogger.error(
-                { record },
                 'No OldImage was defined for a MODIFY event',
               );
               return;
             }
             if (!newEntity) {
               recordLogger.error(
-                { record },
                 'No NewImage was defined for a MODIFY event',
               );
               return;
@@ -273,7 +327,6 @@ export class DynamoStreamHandler<Entity, Context> {
           else if (record.eventName === 'REMOVE') {
             if (!oldEntity) {
               recordLogger.error(
-                { record },
                 'No OldImage was defined for a REMOVE event',
               );
               return;
@@ -290,7 +343,7 @@ export class DynamoStreamHandler<Entity, Context> {
 
   /**
    * Returns a test harness for exercising the handler, with an optional
-   * overriden context.
+   * overridden context.
    */
   harness(
     options?: DynamoStreamHandlerHarnessConfig<Context>,
@@ -333,6 +386,8 @@ export class DynamoStreamHandler<Entity, Context> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
         await lambda(dynamoEvent, {} as any, null as any);
       },
+      obfuscateEvent: (event: DynamoDBStreamEvent) =>
+        this.obfuscateEvent(event),
     };
   }
 }
