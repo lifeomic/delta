@@ -741,18 +741,18 @@ describe('DynamoStreamHandler', () => {
           dynamodb: {
             NewImage: {
               id: { S: 'test-id' },
-              secret: { S: 'abcdefg' }
+              secret: { S: 'abcdefg' },
             },
             OldImage: {
               id: { S: 'test-id' },
-              not_secret: { S: 'abcdefg' }
-            }
+              not_secret: { S: 'abcdefg' },
+            },
           },
         },
       ],
     } as DynamoDBStreamEvent;
 
-    test('no obfuscation without configuration', async () => {
+    test('no obfuscation without configuration', () => {
       const testValue = uuid();
 
       const overrideLogger = {
@@ -765,17 +765,16 @@ describe('DynamoStreamHandler', () => {
         logger,
         parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
-      })
-        .harness({
-          logger: overrideLogger as any,
-          createRunContext: () => ({ dataSources, testValue }),
-        });
+      }).harness({
+        logger: overrideLogger as any,
+        createRunContext: () => ({ dataSources, testValue }),
+      });
 
       const result = obfuscateEvent(baseEvent);
       expect(result).toEqual(baseEvent);
     });
 
-    test('obfuscate with a configuration', async () => {
+    test('obfuscate with a configuration', () => {
       const testValue = uuid();
 
       const overrideLogger = {
@@ -789,11 +788,10 @@ describe('DynamoStreamHandler', () => {
         loggerObfuscateImageKeys: ['secret'],
         parse: testSerializer.parse,
         createRunContext: () => ({ dataSources }),
-      })
-        .harness({
-          logger: overrideLogger as any,
-          createRunContext: () => ({ dataSources, testValue }),
-        });
+      }).harness({
+        logger: overrideLogger as any,
+        createRunContext: () => ({ dataSources, testValue }),
+      });
 
       const result = obfuscateEvent(baseEvent);
       expect(result).toEqual({
@@ -803,12 +801,12 @@ describe('DynamoStreamHandler', () => {
             dynamodb: {
               NewImage: {
                 id: { S: 'test-id' },
-                secret: { S: 'obfuscated' }
+                secret: { S: 'obfuscated' },
               },
               OldImage: {
                 id: { S: 'test-id' },
-                not_secret: { S: 'abcdefg' }
-              }
+                not_secret: { S: 'abcdefg' },
+              },
             },
           },
         ],
@@ -824,7 +822,7 @@ describe('DynamoStreamHandler', () => {
             dynamodb: {
               NewImage: {
                 id: { S: 'test-id' },
-                secret: { S: 'obfuscated' }
+                secret: { S: 'obfuscated' },
               },
             },
           },
@@ -832,5 +830,4 @@ describe('DynamoStreamHandler', () => {
       });
     });
   });
-
 });

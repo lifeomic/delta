@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import {
   DynamoDBStreamEvent,
   DynamoDBStreamHandler,
-  DynamoDBRecord
+  DynamoDBRecord,
 } from 'aws-lambda';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import {
@@ -136,13 +136,10 @@ export class DynamoStreamHandler<Entity, Context> {
     return copy;
   }
 
-  private obfuscate(
-    blob: any,
-    keys: string[],
-  ): any {
+  private obfuscate(blob: any, keys: string[]): any {
     if (blob === undefined) return undefined;
     const obfuscated = blob;
-    keys.forEach(k => {
+    keys.forEach((k) => {
       if (obfuscated[k]) {
         obfuscated[k] = { S: 'obfuscated' };
       }
@@ -150,9 +147,7 @@ export class DynamoStreamHandler<Entity, Context> {
     return obfuscated;
   }
 
-  private obfuscateRecord(
-    dynamoRecord: DynamoDBRecord
-  ): DynamoDBRecord {
+  private obfuscateRecord(dynamoRecord: DynamoDBRecord): DynamoDBRecord {
     if (this.config.loggerObfuscateImageKeys && dynamoRecord.dynamodb) {
       return {
         ...dynamoRecord,
@@ -160,24 +155,24 @@ export class DynamoStreamHandler<Entity, Context> {
           ...dynamoRecord.dynamodb,
           NewImage: this.obfuscate(
             dynamoRecord.dynamodb.NewImage,
-            this.config.loggerObfuscateImageKeys
+            this.config.loggerObfuscateImageKeys,
           ),
           OldImage: this.obfuscate(
             dynamoRecord.dynamodb.OldImage,
-            this.config.loggerObfuscateImageKeys
+            this.config.loggerObfuscateImageKeys,
           ),
         },
-      }
+      };
     }
     return dynamoRecord;
   }
 
   private obfuscateEvent(
-    dynamoEvent: DynamoDBStreamEvent
+    dynamoEvent: DynamoDBStreamEvent,
   ): DynamoDBStreamEvent {
     return {
-      Records: dynamoEvent.Records.map(r => this.obfuscateRecord(r)),
-    }
+      Records: dynamoEvent.Records.map((r) => this.obfuscateRecord(r)),
+    };
   }
 
   /**
@@ -233,7 +228,7 @@ export class DynamoStreamHandler<Entity, Context> {
 
       context.logger.info(
         { event: this.obfuscateEvent(event) },
-        'Processing DynamoDB stream event'
+        'Processing DynamoDB stream event',
       );
 
       await processWithOrdering(
@@ -267,7 +262,7 @@ export class DynamoStreamHandler<Entity, Context> {
         },
         async (record) => {
           const recordLogger = this.config.logger.child({
-            record: this.obfuscateRecord(record)
+            record: this.obfuscateRecord(record),
           });
           if (!record.dynamodb) {
             recordLogger.error(
@@ -290,9 +285,7 @@ export class DynamoStreamHandler<Entity, Context> {
           // Handle INSERT events -- invoke the INSERT actions in order.
           if (record.eventName === 'INSERT') {
             if (!newEntity) {
-              recordLogger.error(
-                'No NewImage was defined for an INSERT event',
-              );
+              recordLogger.error('No NewImage was defined for an INSERT event');
               return;
             }
 
@@ -303,15 +296,11 @@ export class DynamoStreamHandler<Entity, Context> {
           // Handle MODIFY events -- invoke the MODIFY actions in order.
           else if (record.eventName === 'MODIFY') {
             if (!oldEntity) {
-              recordLogger.error(
-                'No OldImage was defined for a MODIFY event',
-              );
+              recordLogger.error('No OldImage was defined for a MODIFY event');
               return;
             }
             if (!newEntity) {
-              recordLogger.error(
-                'No NewImage was defined for a MODIFY event',
-              );
+              recordLogger.error('No NewImage was defined for a MODIFY event');
               return;
             }
 
@@ -326,9 +315,7 @@ export class DynamoStreamHandler<Entity, Context> {
           // Handle REMOVE events -- invoke the REMOVE actions in order.
           else if (record.eventName === 'REMOVE') {
             if (!oldEntity) {
-              recordLogger.error(
-                'No OldImage was defined for a REMOVE event',
-              );
+              recordLogger.error('No OldImage was defined for a REMOVE event');
               return;
             }
 
