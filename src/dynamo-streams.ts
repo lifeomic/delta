@@ -77,7 +77,6 @@ export type DynamoStreamHandlerHarnessConfig<Context> = {
 
 export type DynamoStreamHandlerHarnessContext<Entity> = {
   sendEvent: (event: TestEvent<Entity>) => Promise<void>;
-  obfuscateEvent: (event: DynamoDBStreamEvent) => DynamoDBStreamEvent;
 };
 
 export type TestRecord<Entity> =
@@ -373,8 +372,6 @@ export class DynamoStreamHandler<Entity, Context> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
         await lambda(dynamoEvent, {} as any, null as any);
       },
-      obfuscateEvent: (event: DynamoDBStreamEvent) =>
-        this.obfuscateEvent(event),
     };
   }
 }

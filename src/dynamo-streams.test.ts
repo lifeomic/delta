@@ -2,7 +2,7 @@ import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { DynamoStreamHandler } from './dynamo-streams';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { DynamoDBStreamEvent } from 'aws-lambda';
+// import { DynamoDBStreamEvent } from 'aws-lambda';
 import { z } from 'zod';
 
 const TestSchema = z.object({
@@ -431,6 +431,7 @@ describe('DynamoStreamHandler', () => {
   describe('error scenarios', () => {
     const lambda = new DynamoStreamHandler({
       logger,
+      loggerObfuscateImageKeys: ['secret'],
       parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     }).lambda();
@@ -476,6 +477,12 @@ describe('DynamoStreamHandler', () => {
       expect(logger.error).toHaveBeenCalledWith(
         'No NewImage was defined for a MODIFY event',
       );
+      expect(logger.child).toHaveBeenCalledWith({
+        record: {
+          eventName: 'MODIFY',
+          dynamodb: { OldImage: { id: { S: 'test-id' } } },
+        },
+      });
     });
 
     test('MODIFY with no OldImage', async () => {
@@ -484,7 +491,9 @@ describe('DynamoStreamHandler', () => {
           Records: [
             {
               eventName: 'MODIFY',
-              dynamodb: { NewImage: { id: { S: 'test-id' } } },
+              dynamodb: {
+                NewImage: { id: { S: 'test-id' }, secret: { S: 'test-id' } },
+              },
             },
           ],
         },
@@ -495,6 +504,14 @@ describe('DynamoStreamHandler', () => {
       expect(logger.error).toHaveBeenCalledWith(
         'No OldImage was defined for a MODIFY event',
       );
+      expect(logger.child).toHaveBeenCalledWith({
+        record: {
+          eventName: 'MODIFY',
+          dynamodb: {
+            NewImage: { id: { S: 'test-id' }, secret: { S: 'obfuscated' } },
+          },
+        },
+      });
     });
 
     test('REMOVE with no OldImage', async () => {
@@ -730,104 +747,6 @@ describe('DynamoStreamHandler', () => {
 
       // This assertions provides some reasonable confirmation that parallelization is not happening.
       expect(end - start).toBeGreaterThanOrEqual(400);
-    });
-  });
-
-  describe('logger obfuscation', () => {
-    const baseEvent = {
-      Records: [
-        {
-          eventName: 'MODIFY',
-          dynamodb: {
-            NewImage: {
-              id: { S: 'test-id' },
-              secret: { S: 'abcdefg' },
-            },
-            OldImage: {
-              id: { S: 'test-id' },
-              not_secret: { S: 'abcdefg' },
-            },
-          },
-        },
-      ],
-    } as DynamoDBStreamEvent;
-
-    test('no obfuscation without configuration', () => {
-      const testValue = uuid();
-
-      const overrideLogger = {
-        info: jest.fn(),
-        error: jest.fn(),
-        child: jest.fn(),
-      };
-      overrideLogger.child.mockImplementation(() => overrideLogger);
-      const { obfuscateEvent } = new DynamoStreamHandler({
-        logger,
-        parse: testSerializer.parse,
-        createRunContext: () => ({ dataSources }),
-      }).harness({
-        logger: overrideLogger as any,
-        createRunContext: () => ({ dataSources, testValue }),
-      });
-
-      const result = obfuscateEvent(baseEvent);
-      expect(result).toEqual(baseEvent);
-    });
-
-    test('obfuscate with a configuration', () => {
-      const testValue = uuid();
-
-      const overrideLogger = {
-        info: jest.fn(),
-        error: jest.fn(),
-        child: jest.fn(),
-      };
-      overrideLogger.child.mockImplementation(() => overrideLogger);
-      const { obfuscateEvent } = new DynamoStreamHandler({
-        logger,
-        loggerObfuscateImageKeys: ['secret'],
-        parse: testSerializer.parse,
-        createRunContext: () => ({ dataSources }),
-      }).harness({
-        logger: overrideLogger as any,
-        createRunContext: () => ({ dataSources, testValue }),
-      });
-
-      const result = obfuscateEvent(baseEvent);
-      expect(result).toEqual({
-        Records: [
-          {
-            eventName: 'MODIFY',
-            dynamodb: {
-              NewImage: {
-                id: { S: 'test-id' },
-                secret: { S: 'obfuscated' },
-              },
-              OldImage: {
-                id: { S: 'test-id' },
-                not_secret: { S: 'abcdefg' },
-              },
-            },
-          },
-        ],
-      });
-
-      const missingImageEvent = baseEvent;
-      delete missingImageEvent.Records[0].dynamodb!.OldImage;
-      const result2 = obfuscateEvent(missingImageEvent);
-      expect(result2).toEqual({
-        Records: [
-          {
-            eventName: 'MODIFY',
-            dynamodb: {
-              NewImage: {
-                id: { S: 'test-id' },
-                secret: { S: 'obfuscated' },
-              },
-            },
-          },
-        ],
-      });
     });
   });
 });
