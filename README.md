@@ -16,6 +16,8 @@ import { DynamoStreamHandler } from '@lifeomic/delta';
 
 const stream = new DynamoStreamHandler({
   logger,
+  // Optionally specify a list of image keys to obfuscate the values of 
+  loggerObfuscateImageKeys: ['api-secret'],
   parse: (item) => {
     // parse the item using your custom logic, e.g. using zod or ajv.
     return { id: item.id };
@@ -165,12 +167,22 @@ test('something', async () => {
 
 ### Parallel Processing + Ordering
 
-By default, the abstractions in `@lifeomic/delta` (`DynamoStreamHandler` and `SQSMessageHandler`) will process events in parallel. To control the parallelization, specify a `concurrency` value when creating the handler.
+By default, the abstractions in `@lifeomic/delta` (`DynamoStreamHandler` and 
+`SQSMessageHandler`) will process events in parallel. To control the 
+parallelization, specify a `concurrency` value when creating the handler.
 
-These abstractions also ensure that within a batch of events correct _ordering_ of events is maintained according to the ordering semantics of the upstream event source, even when processing in parallel.
+These abstractions also ensure that within a batch of events correct _ordering_ 
+of events is maintained according to the ordering semantics of the upstream 
+event source, even when processing in parallel.
 
-In `DynamoStreamHandler`, events for the same _key_ will always be processed serially -- events from different keys will be processed in parallel.
+In `DynamoStreamHandler`, events for the same _key_ will always be processed 
+serially -- events from different keys will be processed in parallel.
 
-In `SQSMessageHandler`, events with the same `MessageGroupId` will always processed serially -- events with different `MessageGroupId` values will be processed in parallel.
+In `SQSMessageHandler`, events with the same `MessageGroupId` will always 
+processed serially -- events with different `MessageGroupId` values will be 
+processed in parallel.
 
-**Note**: while the ordering semantics above will always be preserved, events that do _not_ need to be ordered will not necessarily be processed in the same order they were received in the batch (even when using a `concurrency` value of `1`).
+**Note**: while the ordering semantics above will always be preserved, events 
+that do _not_ need to be ordered will not necessarily be processed in the same 
+order they were received in the batch (even when using a `concurrency` value of 
+`1`).

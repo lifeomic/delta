@@ -223,7 +223,6 @@ describe('DynamoStreamHandler', () => {
     );
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(5);
-
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(1, 'insert 1', {
       id: 'test-id-1',
     });
@@ -431,6 +430,7 @@ describe('DynamoStreamHandler', () => {
   describe('error scenarios', () => {
     const lambda = new DynamoStreamHandler({
       logger,
+      loggerObfuscateImageKeys: ['secret'],
       parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     }).lambda();
@@ -443,7 +443,6 @@ describe('DynamoStreamHandler', () => {
       );
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.anything(),
         'The dynamodb property was not present on event',
       );
     });
@@ -456,7 +455,6 @@ describe('DynamoStreamHandler', () => {
       );
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.anything(),
         'No NewImage was defined for an INSERT event',
       );
     });
@@ -476,9 +474,14 @@ describe('DynamoStreamHandler', () => {
       );
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.anything(),
         'No NewImage was defined for a MODIFY event',
       );
+      expect(logger.child).toHaveBeenCalledWith({
+        record: {
+          eventName: 'MODIFY',
+          dynamodb: { OldImage: { id: { S: 'test-id' } } },
+        },
+      });
     });
 
     test('MODIFY with no OldImage', async () => {
@@ -487,7 +490,9 @@ describe('DynamoStreamHandler', () => {
           Records: [
             {
               eventName: 'MODIFY',
-              dynamodb: { NewImage: { id: { S: 'test-id' } } },
+              dynamodb: {
+                NewImage: { id: { S: 'test-id' }, secret: { S: 'test-id' } },
+              },
             },
           ],
         },
@@ -496,9 +501,16 @@ describe('DynamoStreamHandler', () => {
       );
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.anything(),
         'No OldImage was defined for a MODIFY event',
       );
+      expect(logger.child).toHaveBeenCalledWith({
+        record: {
+          eventName: 'MODIFY',
+          dynamodb: {
+            NewImage: { id: { S: 'test-id' }, secret: { S: 'obfuscated' } },
+          },
+        },
+      });
     });
 
     test('REMOVE with no OldImage', async () => {
@@ -509,7 +521,6 @@ describe('DynamoStreamHandler', () => {
       );
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.anything(),
         'No OldImage was defined for a REMOVE event',
       );
     });
