@@ -19,7 +19,8 @@ export type DynamoStreamHandlerConfig<Entity, Context> = {
   logger: LoggerInterface;
   /**
    * A listing of keys within a dynamo record's images to obfuscate in logging
-   * output.
+   * output. This will not perform a deep obfuscation of 'M' AttributeValue
+   * types and instead will simply obfuscate the entire value.
    */
   loggerObfuscateImageKeys?: string[];
   /**
@@ -137,13 +138,13 @@ export class DynamoStreamHandler<Entity, Context> {
 
   private obfuscate(blob: any, keys: string[]): any {
     if (blob === undefined) return undefined;
-    const obfuscated = blob;
+    const copy: any = { ...blob };
     keys.forEach((k) => {
-      if (obfuscated[k]) {
-        obfuscated[k] = { S: 'obfuscated' };
+      if (copy[k]) {
+        copy[k] = { S: 'obfuscated' };
       }
     });
-    return obfuscated;
+    return copy;
   }
 
   private obfuscateRecord(dynamoRecord: DynamoDBRecord): DynamoDBRecord {

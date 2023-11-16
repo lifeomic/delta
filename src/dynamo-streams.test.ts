@@ -8,6 +8,12 @@ const TestSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
   otherValue: z.string().optional(),
+  otherMap: z
+    .object({
+      name: z.string(),
+      age: z.number(),
+    })
+    .optional(),
 });
 
 const testSerializer = {
@@ -430,7 +436,6 @@ describe('DynamoStreamHandler', () => {
   describe('error scenarios', () => {
     const lambda = new DynamoStreamHandler({
       logger,
-      loggerObfuscateImageKeys: ['secret'],
       parse: testSerializer.parse,
       createRunContext: () => ({ logger, dataSources }),
     }).lambda();
@@ -491,7 +496,7 @@ describe('DynamoStreamHandler', () => {
             {
               eventName: 'MODIFY',
               dynamodb: {
-                NewImage: { id: { S: 'test-id' }, secret: { S: 'test-id' } },
+                NewImage: { id: { S: 'test-id' } },
               },
             },
           ],
@@ -507,7 +512,7 @@ describe('DynamoStreamHandler', () => {
         record: {
           eventName: 'MODIFY',
           dynamodb: {
-            NewImage: { id: { S: 'test-id' }, secret: { S: 'obfuscated' } },
+            NewImage: { id: { S: 'test-id' } },
           },
         },
       });
@@ -746,6 +751,90 @@ describe('DynamoStreamHandler', () => {
 
       // This assertions provides some reasonable confirmation that parallelization is not happening.
       expect(end - start).toBeGreaterThanOrEqual(400);
+    });
+  });
+
+  describe('logging obfuscation', () => {
+    test('MODIFY with no OldImage and obfuscated secret', async () => {
+      const lambda = new DynamoStreamHandler({
+        logger,
+        loggerObfuscateImageKeys: ['otherValue'],
+        parse: testSerializer.parse,
+        createRunContext: () => ({ logger, dataSources }),
+      }).lambda();
+
+      await lambda(
+        {
+          Records: [
+            {
+              eventName: 'MODIFY',
+              dynamodb: {
+                NewImage: {
+                  id: { S: 'test-id' },
+                  otherValue: { S: 'secret data' },
+                },
+              },
+            },
+          ],
+        },
+        {} as any,
+        {} as any,
+      );
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'No OldImage was defined for a MODIFY event',
+      );
+      expect(logger.child).toHaveBeenCalledWith({
+        record: {
+          eventName: 'MODIFY',
+          dynamodb: {
+            NewImage: { id: { S: 'test-id' }, otherValue: { S: 'obfuscated' } },
+          },
+        },
+      });
+    });
+
+    test('event not modified during obfuscation', async () => {
+      const lambda = new DynamoStreamHandler({
+        logger,
+        loggerObfuscateImageKeys: ['otherMap', 'otherValue'],
+        parse: testSerializer.parse,
+        createRunContext: () => ({ logger, dataSources }),
+      })
+        .onModify((ctx, oldEntity, newEntity) => {
+          ctx.dataSources.doSomething(oldEntity, newEntity);
+        })
+        .lambda();
+
+      await lambda(
+        {
+          Records: [
+            {
+              eventName: 'MODIFY',
+              dynamodb: {
+                OldImage: {
+                  id: { S: 'old-modify' },
+                  otherValue: { S: 'secret data' },
+                },
+                NewImage: {
+                  id: { S: 'new-modify' },
+                  otherMap: {
+                    M: { name: { S: 'secret data' }, age: { N: '35' } },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        {} as any,
+        {} as any,
+      );
+
+      expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
+      expect(dataSources.doSomething).toHaveBeenCalledWith(
+        { id: 'old-modify', otherValue: 'secret data' },
+        { id: 'new-modify', otherMap: { name: 'secret data', age: 35 } },
+      );
     });
   });
 });
