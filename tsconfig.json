@@ -4,7 +4,7 @@
   "compilerOptions": {
     "target": "es2019",
     "module": "commonjs",
-    "lib": ["ES2020"],
+    "lib": ["ES2021"],
     "outDir": "./dist",
     "inlineSources": false,
     "inlineSourceMap": false,

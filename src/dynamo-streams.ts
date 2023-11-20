@@ -258,7 +258,6 @@ export class DynamoStreamHandler<Entity, Context> {
             );
           },
           concurrency: this.config.concurrency ?? 5,
-          stopOnError: false,
         },
         async (record) => {
           const recordLogger = this.config.logger.child({

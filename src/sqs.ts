@@ -26,6 +26,12 @@ export type SQSMessageHandlerConfig<Message, Context> = {
    * @default 5
    */
   concurrency?: number;
+  /**
+   * Whether or not to use SQS partial batch responses. For more details
+   * about SQS partial batch responses see
+   * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html
+   */
+  partialBatching?: boolean;
 };
 
 export type SQSMessageAction<Message, Context> = (
@@ -55,6 +61,12 @@ export type SQSMessageHandlerHarnessContext<Message> = {
   sendEvent: (event: { messages: Message[] }) => Promise<void>;
 };
 
+export type SQSPartialBatchResponse = {
+  batchItemFailures: {
+    itemIdentifier: string;
+  }[];
+};
+
 /**
  * An abstraction for an SQS message handler.
  */
@@ -75,7 +87,10 @@ export class SQSMessageHandler<Message, Context> {
     return this;
   }
 
-  lambda(): (event: SQSEvent, context: AWSContext) => Promise<void> {
+  lambda(): (
+    event: SQSEvent,
+    context: AWSContext,
+  ) => Promise<void | SQSPartialBatchResponse> {
     return withHealthCheckHandling(async (event, awsContext) => {
       // 1. Build the context.
       const correlationId = uuid();
@@ -92,32 +107,68 @@ export class SQSMessageHandler<Message, Context> {
       // 2. Process all the records.
       context.logger.info({ event }, 'Processing SQS topic message');
 
-      await processWithOrdering(
-        {
-          items: event.Records,
-          // If there is not a MessageGroupId, then we don't care about
-          // the ordering for the event. We can just generate a UUID for the
-          // ordering key.
-          orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
-          concurrency: this.config.concurrency ?? 5,
-          stopOnError: false,
-        },
-        async (record) => {
-          const messageLogger = context.logger.child({
-            messageId: record.messageId,
-          });
+      const { hasUnprocessedRecords, unprocessedRecords } =
+        await processWithOrdering(
+          {
+            items: event.Records,
+            // If there is not a MessageGroupId, then we don't care about
+            // the ordering for the event. We can just generate a UUID for the
+            // ordering key.
+            orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
+            concurrency: this.config.concurrency ?? 5,
+            rejectOnError: false,
+          },
+          async (record) => {
+            const messageLogger = context.logger.child({
+              messageId: record.messageId,
+            });
 
-          const parsedMessage = this.config.parseMessage(record.body);
+            const parsedMessage = this.config.parseMessage(record.body);
 
-          for (const action of this.messageActions) {
-            await action({ ...context, logger: messageLogger }, parsedMessage);
-          }
+            for (const action of this.messageActions) {
+              await action(
+                { ...context, logger: messageLogger },
+                parsedMessage,
+              );
+            }
 
-          messageLogger.info('Successfully processed message');
-        },
-      );
+            messageLogger.info('Successfully processed message');
+          },
+        );
 
-      context.logger.info('Succesfully processed all messages');
+      if (hasUnprocessedRecords) {
+        context.logger.warn(
+          { unprocessedRecords },
+          'Failed to process all messages',
+        );
+      } else {
+        context.logger.info('Succesfully processed all messages');
+      }
+
+      if (this.config.partialBatching) {
+        // SQS partial batching expects that you return an ordered list of
+        // failures. We map through each group and add them to the batch item
+        // failures in order for each group.
+        const batchItemFailures = Object.entries(unprocessedRecords)
+          .map(([groupId, record]) => {
+            context.logger.warn(
+              { groupId, error: record.error },
+              'Failed to process message group',
+            );
+
+            return record.items.map((item) => ({
+              itemIdentifier: item.messageId,
+            }));
+          })
+          .flat();
+
+        context.logger.info(
+          { batchItemFailures },
+          'Sending SQS partial batch response',
+        );
+
+        return { batchItemFailures };
+      }
     });
   }
 
