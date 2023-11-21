@@ -29,7 +29,7 @@ export type SQSMessageHandlerConfig<Message, Context> = {
   /**
    * Whether or not to use SQS partial batch responses. For more details
    * about SQS partial batch responses see
-   * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html
+   * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
    */
   partialBatching?: boolean;
 };
