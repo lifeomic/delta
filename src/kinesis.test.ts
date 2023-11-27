@@ -207,6 +207,51 @@ describe('KinesisEventHandler', () => {
       });
     });
 
+    test('throws error if there are unprocessed records', async () => {
+      let alreadyFailed = false;
+
+      const handler = new KinesisEventHandler({
+        logger,
+        parseEvent: testSerializer.parseEvent,
+        createRunContext: () => ({}),
+      })
+        .onEvent(() => {
+          if (!alreadyFailed) {
+            alreadyFailed = true;
+            throw new Error('poison record!');
+          }
+        })
+        .lambda();
+
+      await expect(
+        handler(
+          {
+            Records: [
+              {
+                kinesis: {
+                  partitionKey: uuid(),
+                  data: JSON.stringify({ data: 'test-event-1' }),
+                },
+              },
+              {
+                kinesis: {
+                  partitionKey: uuid(),
+                  data: JSON.stringify({ data: 'test-event-2' }),
+                },
+              },
+              {
+                kinesis: {
+                  partitionKey: uuid(),
+                  data: JSON.stringify({ data: 'test-event-3' }),
+                },
+              },
+            ] as any,
+          },
+          {} as any,
+        ),
+      ).rejects.toThrow('Failed to process all Kinesis records');
+    });
+
     test('allows overriding context and logger', async () => {
       const testValue = uuid();
 

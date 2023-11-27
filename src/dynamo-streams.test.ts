@@ -76,6 +76,46 @@ describe('DynamoStreamHandler', () => {
     });
   });
 
+  test('throws error if there are unprocessed records', async () => {
+    const handler = new DynamoStreamHandler({
+      logger,
+      parse: testSerializer.parse,
+      createRunContext: () => ({ logger, dataSources }),
+    })
+      .onInsert((ctx, entity) => {
+        if (entity.id === 'new-insert-2') {
+          ctx.dataSources.doSomething(entity);
+        } else {
+          throw new Error('poison record!');
+        }
+      })
+      .lambda();
+
+    await expect(
+      handler(
+        {
+          Records: [
+            {
+              eventName: 'INSERT',
+              dynamodb: { NewImage: { id: { S: 'new-insert-1' } } },
+            },
+            {
+              eventName: 'INSERT',
+              dynamodb: { NewImage: { id: { S: 'new-insert-2' } } },
+            },
+          ],
+        },
+        {} as any,
+        {} as any,
+      ),
+    ).rejects.toThrow('Failed to process all DynamoDB stream records');
+
+    expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
+    expect(dataSources.doSomething).toHaveBeenCalledWith({
+      id: 'new-insert-2',
+    });
+  });
+
   test('handles insert events', async () => {
     const lambda = new DynamoStreamHandler({
       logger,
