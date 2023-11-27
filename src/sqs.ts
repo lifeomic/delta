@@ -31,7 +31,7 @@ export type SQSMessageHandlerConfig<Message, Context> = {
    * about SQS partial batch responses see
    * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
    */
-  partialBatching?: boolean;
+  usePartialBatchResponses?: boolean;
 };
 
 export type SQSMessageAction<Message, Context> = (
@@ -136,39 +136,43 @@ export class SQSMessageHandler<Message, Context> {
           },
         );
 
-      if (hasUnprocessedRecords) {
-        context.logger.warn(
-          { unprocessedRecords },
-          'Failed to process all messages',
-        );
-      } else {
-        context.logger.info('Succesfully processed all messages');
-      }
+      hasUnprocessedRecords
+        ? context.logger.warn(
+            { unprocessedRecords },
+            'Failed to process all messages',
+          )
+        : context.logger.info('Succesfully processed all messages');
 
-      if (this.config.partialBatching) {
-        // SQS partial batching expects that you return an ordered list of
-        // failures. We map through each group and add them to the batch item
-        // failures in order for each group.
-        const batchItemFailures = Object.entries(unprocessedRecords)
-          .map(([groupId, record]) => {
-            context.logger.warn(
-              { groupId, error: record.error },
-              'Failed to process message group',
-            );
+      if (!this.config.usePartialBatchResponses) return;
 
-            return record.items.map((item) => ({
-              itemIdentifier: item.messageId,
-            }));
-          })
-          .flat();
+      // SQS partial batching expects that you return an ordered list of
+      // failures. We map through each group and add them to the batch item
+      // failures in order for each group.
+      const batchItemFailures = Object.entries(unprocessedRecords)
+        .map(([groupId, record]) => {
+          const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
+          context.logger.warn(
+            {
+              groupId,
+              err: record.error,
+              failedRecord,
+              subsequentUnprocessedRecords,
+            },
+            'Failed to fully process message group',
+          );
 
-        context.logger.info(
-          { batchItemFailures },
-          'Sending SQS partial batch response',
-        );
+          return record.items.map((item) => ({
+            itemIdentifier: item.messageId,
+          }));
+        })
+        .flat();
 
-        return { batchItemFailures };
-      }
+      context.logger.info(
+        { batchItemFailures },
+        'Sending SQS partial batch response',
+      );
+
+      return { batchItemFailures };
     });
   }
 

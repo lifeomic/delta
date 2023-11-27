@@ -10,7 +10,7 @@ export type BaseContext = {
 };
 
 export const withHealthCheckHandling =
-  <Event, HandlerResponse = void>(
+  <Event, HandlerResponse>(
     handler: (event: Event, context: Context) => Promise<HandlerResponse>,
   ) =>
   (event: Event, context: Context): Promise<HandlerResponse> => {
