@@ -231,7 +231,7 @@ export class DynamoStreamHandler<Entity, Context> {
         'Processing DynamoDB stream event',
       );
 
-      const { hasUnprocessedRecords } = await processWithOrdering(
+      const processingResult = await processWithOrdering(
         {
           items: event.Records,
           orderBy: (record) => {
@@ -325,10 +325,7 @@ export class DynamoStreamHandler<Entity, Context> {
         },
       );
 
-      if (hasUnprocessedRecords) {
-        throw new Error('Failed to process all DynamoDB stream records');
-      }
-
+      processingResult.throwOnUnprocessedRecords();
       context.logger.info('Successfully processed all DynamoDB stream records');
     });
   }

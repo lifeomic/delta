@@ -83,10 +83,10 @@ describe('DynamoStreamHandler', () => {
       createRunContext: () => ({ logger, dataSources }),
     })
       .onInsert((ctx, entity) => {
-        if (entity.id === 'new-insert-2') {
+        if (entity.id === 'new-insert-1') {
           ctx.dataSources.doSomething(entity);
         } else {
-          throw new Error('poison record!');
+          throw new Error(`Failed to process ${entity.id}`);
         }
       })
       .lambda();
@@ -103,16 +103,25 @@ describe('DynamoStreamHandler', () => {
               eventName: 'INSERT',
               dynamodb: { NewImage: { id: { S: 'new-insert-2' } } },
             },
+            {
+              eventName: 'INSERT',
+              dynamodb: { NewImage: { id: { S: 'new-insert-3' } } },
+            },
           ],
         },
         {} as any,
         {} as any,
       ),
-    ).rejects.toThrow('Failed to process all DynamoDB stream records');
+    ).rejects.toThrowError(
+      new AggregateError([
+        new Error('Failed to process new-insert-2'),
+        new Error('Failed to process new-insert-3'),
+      ]),
+    );
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
     expect(dataSources.doSomething).toHaveBeenCalledWith({
-      id: 'new-insert-2',
+      id: 'new-insert-1',
     });
   });
 

@@ -90,7 +90,7 @@ export class KinesisEventHandler<Event, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
-      const { hasUnprocessedRecords } = await processWithOrdering(
+      const processingResult = await processWithOrdering(
         {
           items: event.Records,
           orderBy: (record) => record.kinesis.partitionKey,
@@ -111,10 +111,7 @@ export class KinesisEventHandler<Event, Context> {
         },
       );
 
-      if (hasUnprocessedRecords) {
-        throw new Error('Failed to process all Kinesis records');
-      }
-
+      processingResult.throwOnUnprocessedRecords();
       context.logger.info('Succesfully processed all Kinesis records');
     });
   }

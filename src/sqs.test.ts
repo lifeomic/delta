@@ -58,7 +58,7 @@ describe('SQSMessageHandler', () => {
       },
     }).lambda();
 
-    await lambda(
+    const response = await lambda(
       {
         Records: [
           { attributes: {}, body: JSON.stringify({ data: 'test-event-1' }) },
@@ -66,6 +66,8 @@ describe('SQSMessageHandler', () => {
       } as any,
       {} as any,
     );
+
+    expect(response).toBeUndefined();
 
     expect(logger.child).toHaveBeenCalledWith(
       expect.objectContaining({ correlationId: expect.any(String) }),

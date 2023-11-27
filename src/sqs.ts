@@ -107,44 +107,45 @@ export class SQSMessageHandler<Message, Context> {
       // 2. Process all the records.
       context.logger.info({ event }, 'Processing SQS topic message');
 
-      const { hasUnprocessedRecords, unprocessedRecords } =
-        await processWithOrdering(
-          {
-            items: event.Records,
-            // If there is not a MessageGroupId, then we don't care about
-            // the ordering for the event. We can just generate a UUID for the
-            // ordering key.
-            orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
-            concurrency: this.config.concurrency ?? 5,
-          },
-          async (record) => {
-            const messageLogger = context.logger.child({
-              messageId: record.messageId,
-            });
+      const processingResult = await processWithOrdering(
+        {
+          items: event.Records,
+          // If there is not a MessageGroupId, then we don't care about
+          // the ordering for the event. We can just generate a UUID for the
+          // ordering key.
+          orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
+          concurrency: this.config.concurrency ?? 5,
+        },
+        async (record) => {
+          const messageLogger = context.logger.child({
+            messageId: record.messageId,
+          });
 
-            const parsedMessage = this.config.parseMessage(record.body);
+          const parsedMessage = this.config.parseMessage(record.body);
 
-            for (const action of this.messageActions) {
-              await action(
-                { ...context, logger: messageLogger },
-                parsedMessage,
-              );
-            }
+          for (const action of this.messageActions) {
+            await action({ ...context, logger: messageLogger }, parsedMessage);
+          }
 
-            messageLogger.info('Successfully processed SQS message');
-          },
-        );
+          messageLogger.info('Successfully processed SQS message');
+        },
+      );
 
-      if (!hasUnprocessedRecords) {
+      if (!processingResult.hasUnprocessedRecords) {
         context.logger.info('Succesfully processed all SQS messages');
       }
 
-      if (!this.config.usePartialBatchResponses) return;
+      if (!this.config.usePartialBatchResponses) {
+        processingResult.throwOnUnprocessedRecords();
+        return;
+      }
 
       // SQS partial batching expects that you return an ordered list of
       // failures. We map through each group and add them to the batch item
       // failures in order for each group.
-      const batchItemFailures = Object.entries(unprocessedRecords)
+      const batchItemFailures = Object.entries(
+        processingResult.unprocessedRecords,
+      )
         .map(([groupId, record]) => {
           const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
           context.logger.warn(

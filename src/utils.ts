@@ -94,10 +94,18 @@ export const processWithOrdering = async <T>(
     },
   );
 
+  const aggregateErrors = Object.values(unprocessedRecordsByListId)
+    .map((record) => record.error)
+    .filter(Boolean)
+    .flat();
+
   return {
-    hasUnprocessedRecords: Object.values(unprocessedRecordsByListId).some(
-      (record) => record.items.length > 0,
-    ),
+    hasUnprocessedRecords: aggregateErrors.length > 0,
     unprocessedRecords: unprocessedRecordsByListId,
+    throwOnUnprocessedRecords: () => {
+      if (aggregateErrors.length) {
+        throw new AggregateError(aggregateErrors);
+      }
+    },
   };
 };

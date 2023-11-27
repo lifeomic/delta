@@ -207,18 +207,15 @@ describe('KinesisEventHandler', () => {
       });
     });
 
-    test('throws error if there are unprocessed records', async () => {
-      let alreadyFailed = false;
-
+    test('throws aggregate error if there are unprocessed records', async () => {
       const handler = new KinesisEventHandler({
         logger,
         parseEvent: testSerializer.parseEvent,
         createRunContext: () => ({}),
       })
-        .onEvent(() => {
-          if (!alreadyFailed) {
-            alreadyFailed = true;
-            throw new Error('poison record!');
+        .onEvent((ctx, message) => {
+          if (message.data !== 'test-event-1') {
+            throw new Error(`Failed to process ${message.data}`);
           }
         })
         .lambda();
@@ -249,7 +246,12 @@ describe('KinesisEventHandler', () => {
           },
           {} as any,
         ),
-      ).rejects.toThrow('Failed to process all Kinesis records');
+      ).rejects.toThrowError(
+        new AggregateError([
+          new Error('Failed to process test-event-2'),
+          new Error('Failed to process test-event-3'),
+        ]),
+      );
     });
 
     test('allows overriding context and logger', async () => {
