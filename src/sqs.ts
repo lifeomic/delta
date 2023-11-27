@@ -116,7 +116,6 @@ export class SQSMessageHandler<Message, Context> {
             // ordering key.
             orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
             concurrency: this.config.concurrency ?? 5,
-            rejectOnError: false,
           },
           async (record) => {
             const messageLogger = context.logger.child({
@@ -132,12 +131,12 @@ export class SQSMessageHandler<Message, Context> {
               );
             }
 
-            messageLogger.info('Successfully processed message');
+            messageLogger.info('Successfully processed SQS message');
           },
         );
 
       if (!hasUnprocessedRecords) {
-        context.logger.info('Succesfully processed all messages');
+        context.logger.info('Succesfully processed all SQS messages');
       }
 
       if (!this.config.usePartialBatchResponses) return;

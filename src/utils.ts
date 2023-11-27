@@ -32,7 +32,6 @@ export type ProcessWithOrderingParams<T> = {
   items: T[];
   orderBy: (msg: T) => string;
   concurrency: number;
-  rejectOnError?: boolean;
 };
 
 /**
@@ -58,16 +57,11 @@ export type ProcessWithOrderingParams<T> = {
  * This same scenario is true for SQS FIFO queues, which will order messages
  * by MessageGroupId.
  *
- * When rejectOnError is false, the method will return the list
- * of unprocessed items by listId. Callers will then have access to the error
- * that caused the list to stop processing events, plus all the events
- * that were not processed in the batch.
  */
 export const processWithOrdering = async <T>(
   params: ProcessWithOrderingParams<T>,
   process: (item: T) => Promise<void>,
 ) => {
-  const rejectOnError = params.rejectOnError ?? true;
   const groupedItems = groupBy(params.items, params.orderBy);
   const listIds = Object.keys(groupedItems);
   const lists = Object.values(groupedItems);
@@ -100,16 +94,10 @@ export const processWithOrdering = async <T>(
     },
   );
 
-  const aggregateErrors = Object.values(unprocessedRecordsByListId)
-    .map((record) => record.error)
-    .flat();
-
-  if (aggregateErrors.length > 0 && rejectOnError) {
-    throw new AggregateError(aggregateErrors);
-  }
-
   return {
-    hasUnprocessedRecords: aggregateErrors.length > 0,
+    hasUnprocessedRecords: Object.values(unprocessedRecordsByListId).some(
+      (record) => record.items.length > 0,
+    ),
     unprocessedRecords: unprocessedRecordsByListId,
   };
 };
