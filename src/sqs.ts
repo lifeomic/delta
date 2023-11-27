@@ -136,12 +136,9 @@ export class SQSMessageHandler<Message, Context> {
           },
         );
 
-      hasUnprocessedRecords
-        ? context.logger.warn(
-            { unprocessedRecords },
-            'Failed to process all messages',
-          )
-        : context.logger.info('Succesfully processed all messages');
+      if (!hasUnprocessedRecords) {
+        context.logger.info('Succesfully processed all messages');
+      }
 
       if (!this.config.usePartialBatchResponses) return;
 
