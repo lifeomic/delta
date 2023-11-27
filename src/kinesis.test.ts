@@ -208,6 +208,8 @@ describe('KinesisEventHandler', () => {
     });
 
     test('throws aggregate error if there are unprocessed records', async () => {
+      expect.assertions(2);
+
       const handler = new KinesisEventHandler({
         logger,
         parseEvent: testSerializer.parseEvent,
@@ -220,8 +222,8 @@ describe('KinesisEventHandler', () => {
         })
         .lambda();
 
-      await expect(
-        handler(
+      try {
+        await handler(
           {
             Records: [
               {
@@ -245,13 +247,14 @@ describe('KinesisEventHandler', () => {
             ] as any,
           },
           {} as any,
-        ),
-      ).rejects.toThrowError(
-        new AggregateError([
+        );
+      } catch (e) {
+        expect(e).toBeInstanceOf(AggregateError);
+        expect(e.errors).toEqual([
           new Error('Failed to process test-event-2'),
           new Error('Failed to process test-event-3'),
-        ]),
-      );
+        ]);
+      }
     });
 
     test('allows overriding context and logger', async () => {

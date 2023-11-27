@@ -77,6 +77,7 @@ describe('DynamoStreamHandler', () => {
   });
 
   test('throws error if there are unprocessed records', async () => {
+    expect.assertions(4);
     const handler = new DynamoStreamHandler({
       logger,
       parse: testSerializer.parse,
@@ -91,8 +92,8 @@ describe('DynamoStreamHandler', () => {
       })
       .lambda();
 
-    await expect(
-      handler(
+    try {
+      await handler(
         {
           Records: [
             {
@@ -111,13 +112,14 @@ describe('DynamoStreamHandler', () => {
         },
         {} as any,
         {} as any,
-      ),
-    ).rejects.toThrowError(
-      new AggregateError([
+      );
+    } catch (e) {
+      expect(e).toBeInstanceOf(AggregateError);
+      expect(e.errors).toEqual([
         new Error('Failed to process new-insert-2'),
         new Error('Failed to process new-insert-3'),
-      ]),
-    );
+      ]);
+    }
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
     expect(dataSources.doSomething).toHaveBeenCalledWith({
