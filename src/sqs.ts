@@ -148,7 +148,7 @@ export class SQSMessageHandler<Message, Context> {
       )
         .map(([groupId, record]) => {
           const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
-          context.logger.warn(
+          context.logger.error(
             {
               groupId,
               err: record.error,

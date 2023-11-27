@@ -1,9 +1,10 @@
 import { v4 as uuid } from 'uuid';
 import { LoggerInterface } from '@lifeomic/logging';
-import { SQSMessageHandler } from './sqs';
+import { SQSMessageAction, SQSMessageHandler } from './sqs';
 
 const logger: jest.Mocked<LoggerInterface> = {
   info: jest.fn(),
+  error: jest.fn(),
   child: jest.fn(),
 } as any;
 
@@ -49,6 +50,8 @@ describe('SQSMessageHandler', () => {
   });
 
   test('generates a correlation id', async () => {
+    expect.assertions(3);
+
     const lambda = new SQSMessageHandler({
       logger,
       parseMessage: testSerializer.parseMessage,
@@ -67,13 +70,124 @@ describe('SQSMessageHandler', () => {
       {} as any,
     );
 
+    // Assert that when all messages are processed successfully and partial
+    // batch responses are not used (the default setting), nothing is returned
+    // as the lambda response.
     expect(response).toBeUndefined();
-
     expect(logger.child).toHaveBeenCalledWith(
       expect.objectContaining({ correlationId: expect.any(String) }),
     );
+  });
 
-    expect.assertions(2);
+  describe('error handling', () => {
+    const records = [
+      {
+        attributes: { MessageGroupId: '1' },
+        messageId: 'message-1',
+        body: JSON.stringify({ name: 'test-event-1' }),
+      },
+      {
+        attributes: { MessageGroupId: '1' },
+        messageId: 'message-2',
+        body: JSON.stringify({ name: 'test-event-2' }),
+      },
+      {
+        attributes: { MessageGroupId: '1' },
+        messageId: 'message-3',
+        body: JSON.stringify({ name: 'test-event-3' }),
+      },
+      {
+        attributes: { MessageGroupId: '1' },
+        messageId: 'message-4',
+        body: JSON.stringify({ name: 'test-event-4' }),
+      },
+      {
+        attributes: { MessageGroupId: '2' },
+        messageId: 'message-5',
+        body: JSON.stringify({ name: 'test-event-5' }),
+      },
+      {
+        attributes: { MessageGroupId: '2' },
+        messageId: 'message-6',
+        body: JSON.stringify({ name: 'test-event-6' }),
+      },
+      {
+        attributes: { MessageGroupId: '2' },
+        messageId: 'message-7',
+        body: JSON.stringify({ name: 'test-event-7' }),
+      },
+      {
+        attributes: { MessageGroupId: '2' },
+        messageId: 'message-8',
+        body: JSON.stringify({ name: 'test-event-8' }),
+      },
+    ];
+    const messageHandler: SQSMessageAction<{ name: string }, any> = (
+      ctx,
+      message,
+    ) => {
+      // Fail on the third message on each group (each group has 4 messages).
+      if (message.name === 'test-event-3' || message.name === 'test-event-7') {
+        throw new Error(`Failed to process message ${message.name}`);
+      }
+    };
+
+    test('throws on unprocessed events by default', async () => {
+      expect.assertions(2);
+      const handler = new SQSMessageHandler({
+        logger,
+        parseMessage: testSerializer.parseMessage,
+        createRunContext: () => ({}),
+        concurrency: 2,
+      })
+        .onMessage(messageHandler)
+        .lambda();
+
+      try {
+        await handler(
+          {
+            Records: records,
+          } as any,
+          {} as any,
+        );
+      } catch (e) {
+        expect(e).toBeInstanceOf(AggregateError);
+        expect(e.errors).toEqual([
+          new Error('Failed to process message test-event-3'),
+          new Error('Failed to process message test-event-7'),
+        ]);
+      }
+    });
+
+    test('returns partial batch response when setting is enabled', async () => {
+      const handler = new SQSMessageHandler({
+        logger,
+        parseMessage: testSerializer.parseMessage,
+        createRunContext: () => ({}),
+        usePartialBatchResponses: true,
+        // Make sure partial batch responses are returned in order even
+        // when using concurrency.
+        concurrency: 2,
+      })
+        .onMessage(messageHandler)
+        .lambda();
+
+      const result = await handler(
+        {
+          Records: records,
+        } as any,
+        {} as any,
+      );
+
+      expect(result).toEqual({
+        batchItemFailures: [
+          { itemIdentifier: 'message-3' },
+          { itemIdentifier: 'message-4' },
+          { itemIdentifier: 'message-7' },
+          { itemIdentifier: 'message-8' },
+        ],
+      });
+    });
   });
 
   test('sending messages with context', async () => {
