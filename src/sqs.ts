@@ -132,7 +132,7 @@ export class SQSMessageHandler<Message, Context> {
       );
 
       if (!processingResult.hasUnprocessedRecords) {
-        context.logger.info('Succesfully processed all SQS messages');
+        context.logger.info('Successfully processed all SQS messages');
       }
 
       if (!this.config.usePartialBatchResponses) {

@@ -112,7 +112,7 @@ export class KinesisEventHandler<Event, Context> {
       );
 
       processingResult.throwOnUnprocessedRecords();
-      context.logger.info('Succesfully processed all Kinesis records');
+      context.logger.info('Successfully processed all Kinesis records');
     });
   }
 
