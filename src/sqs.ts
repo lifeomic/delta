@@ -27,10 +27,10 @@ export type SQSMessageHandlerConfig<Message, Context> = {
    */
   concurrency?: number;
   /**
-   * Whether or not to use SQS partial batch responses. Make sure to also
-   * turn on partial batch responses when configuring your event source mapping
-   * by specifying ReportBatchItemFailures for the FunctionResponseTypes action.
-   * For more details see:
+   * Whether or not to use SQS partial batch responses. If set to true, make
+   * sure to also turn on partial batch responses when configuring your event
+   * source mapping by specifying ReportBatchItemFailures for the
+   * FunctionResponseTypes action. For more details see:
    * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
    */
   usePartialBatchResponses?: boolean;
