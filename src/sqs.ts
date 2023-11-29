@@ -20,6 +20,9 @@ export type SQSMessageHandlerConfig<Message, Context> = {
    * Create a "context" for the lambda execution. (e.g. "data sources")
    */
   createRunContext: (base: BaseContext) => Context | Promise<Context>;
+
+  useMinimalLogging?: boolean;
+
   /**
    * The maximum concurrency for processing messages.
    *
@@ -107,7 +110,12 @@ export class SQSMessageHandler<Message, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
-      context.logger.info({ event }, 'Processing SQS topic message');
+      context.logger.info(
+        this.config.useMinimalLogging
+          ? { messageIds: event.Records.map((r) => r.messageId) }
+          : { event },
+        'Processing SQS message',
+      );
 
       const processingResult = await processWithOrdering(
         {
@@ -151,12 +159,20 @@ export class SQSMessageHandler<Message, Context> {
         .map(([groupId, record]) => {
           const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
           context.logger.error(
-            {
-              groupId,
-              err: record.error,
-              failedRecord,
-              subsequentUnprocessedRecords,
-            },
+            this.config.useMinimalLogging
+              ? {
+                  groupId,
+                  err: record.error,
+                  failedRecordMessageId: failedRecord.messageId,
+                  subsequentUnprocessedRecordsMessageIds:
+                    subsequentUnprocessedRecords.map((r) => r.messageId),
+                }
+              : {
+                  groupId,
+                  err: record.error,
+                  failedRecord,
+                  subsequentUnprocessedRecords,
+                },
             'Failed to fully process message group',
           );
 
