@@ -421,7 +421,7 @@ describe('SQSMessageHandler', () => {
 
       // This assertion confirms that the group doesn't process in less than 200ms.
       // If it did, then the events would be fully parallelized, which would be bad.
-      expect(end - start).toBeGreaterThan(200);
+      expect(end - start).toBeGreaterThanOrEqual(200);
 
       // This assertion confirms that there is at least some parallelization happening.
       expect(end - start).toBeLessThanOrEqual(450);
