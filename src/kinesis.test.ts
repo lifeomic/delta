@@ -248,7 +248,7 @@ describe('KinesisEventHandler', () => {
           },
           {} as any,
         );
-      } catch (e) {
+      } catch (e: any) {
         expect(e).toBeInstanceOf(AggregateError);
         expect(e.errors).toEqual([
           new Error('Failed to process test-event-2'),

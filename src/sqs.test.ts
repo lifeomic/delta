@@ -150,7 +150,7 @@ describe('SQSMessageHandler', () => {
           } as any,
           {} as any,
         );
-      } catch (e) {
+      } catch (e: any) {
         expect(e).toBeInstanceOf(AggregateError);
         expect(e.errors).toEqual([
           new Error('Failed to process message test-event-3'),
