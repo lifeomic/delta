@@ -133,8 +133,7 @@ export class KinesisEventHandler<Event, Context> {
     return {
       sendEvent: async ({ events }) => {
         const event: KinesisStreamEvent = {
-          // We don't need to mock every field on this event -- there are lots.
-          // @ts-expect-error
+          // @ts-expect-error We don't need to mock every field on this event -- there are lots.
           Records: events.map((e) => ({
             eventID: uuid(),
             kinesis: {
