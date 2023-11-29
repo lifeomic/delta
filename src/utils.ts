@@ -20,6 +20,13 @@ export type BaseHandlerConfig<Context> = {
   createRunContext: (base: BaseContext) => Context | Promise<Context>;
 
   /**
+   * Whether to minimize internal logging of events. When set to `true`,
+   * the handler will never log the full content of events, and will
+   * instead only log unique identifiers for the events.
+   */
+  useMinimalLogging?: boolean;
+
+  /**
    * The maximum concurrency for processing events.
    *
    * @default 5

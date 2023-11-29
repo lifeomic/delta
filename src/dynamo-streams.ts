@@ -216,7 +216,9 @@ export class DynamoStreamHandler<Entity, Context> {
       };
 
       context.logger.info(
-        { event: this.obfuscateEvent(event) },
+        this.config.useMinimalLogging
+          ? { eventIds: event.Records.map((r) => r.eventID) }
+          : { event: this.obfuscateEvent(event) },
         'Processing DynamoDB stream event',
       );
 
@@ -249,9 +251,11 @@ export class DynamoStreamHandler<Entity, Context> {
           concurrency: this.config.concurrency ?? 5,
         },
         async (record) => {
-          const recordLogger = this.config.logger.child({
-            record: this.obfuscateRecord(record),
-          });
+          const recordLogger = this.config.logger.child(
+            this.config.useMinimalLogging
+              ? { recordEventId: record.eventID }
+              : { record: this.obfuscateRecord(record) },
+          );
           if (!record.dynamodb) {
             recordLogger.error(
               'The dynamodb property was not present on event',

@@ -78,6 +78,12 @@ export class KinesisEventHandler<Event, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
+      context.logger.info(
+        this.config.useMinimalLogging
+          ? { eventIds: event.Records.map((r) => r.eventID) }
+          : { event },
+        'Processing Kinesis event',
+      );
       const processingResult = await processWithOrdering(
         {
           items: event.Records,
