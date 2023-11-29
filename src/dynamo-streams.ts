@@ -8,42 +8,28 @@ import {
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import {
   BaseContext,
+  BaseHandlerConfig,
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
 
-export type DynamoStreamHandlerConfig<Entity, Context> = {
-  /**
-   * A logger to use in the context.
-   */
-  logger: LoggerInterface;
-  /**
-   * A listing of keys within a dynamo record's images to obfuscate in logging
-   * output. This will not perform a deep obfuscation of 'M' AttributeValue
-   * types and instead will simply obfuscate the entire value.
-   */
-  loggerObfuscateImageKeys?: string[];
-  /**
-   * A function for parsing images from the stream into your custom type.
-   *
-   * The `object` parameter is an _already unmarshalled_ version of the Dynamo
-   * record.
-   */
-  parse: (object: unknown) => Entity;
-  /**
-   * Create a "context" for the lambda execution. (e.g. "data sources")
-   */
-  createRunContext: (base: BaseContext) => Context | Promise<Context>;
+export type DynamoStreamHandlerConfig<Entity, Context> =
+  BaseHandlerConfig<Context> & {
+    /**
+     * A function for parsing images from the stream into your custom type.
+     *
+     * The `object` parameter is an _already unmarshalled_ version of the Dynamo
+     * record.
+     */
+    parse: (object: unknown) => Entity;
 
-  useMinimalLogging?: boolean;
-
-  /**
-   * The maximum concurrency for processing records.
-   *
-   * @default 5
-   */
-  concurrency?: number;
-};
+    /**
+     * A listing of keys within a dynamo record's images to obfuscate in logging
+     * output. This will not perform a deep obfuscation of 'M' AttributeValue
+     * types and instead will simply obfuscate the entire value.
+     */
+    loggerObfuscateImageKeys?: string[];
+  };
 
 export type InsertAction<Entity, Context> = (
   ctx: Context & BaseContext,

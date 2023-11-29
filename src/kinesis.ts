@@ -3,32 +3,18 @@ import { v4 as uuid } from 'uuid';
 import { KinesisStreamEvent, Context as AWSContext } from 'aws-lambda';
 import {
   BaseContext,
+  BaseHandlerConfig,
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
 
-export type KinesisEventHandlerConfig<Event, Context> = {
-  /**
-   * A logger to use in the context.
-   */
-  logger: LoggerInterface;
-  /**
-   * A function for parsing the Kinesis event data into your custom type.
-   */
-  parseEvent: (body: string) => Event;
-  /**
-   * Create a "context" for the lambda execution. (e.g. "data sources")
-   */
-  createRunContext: (base: BaseContext) => Context | Promise<Context>;
-
-  useMinimalLogging?: boolean;
-  /**
-   * The maximum concurrency for processing events.
-   *
-   * @default 5
-   */
-  concurrency?: number;
-};
+export type KinesisEventHandlerConfig<Event, Context> =
+  BaseHandlerConfig<Context> & {
+    /**
+     * A function for parsing the Kinesis event data into your custom type.
+     */
+    parseEvent: (body: string) => Event;
+  };
 
 export type KinesisEventAction<Event, Context> = (
   context: Context & BaseContext,

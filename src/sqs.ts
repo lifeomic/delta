@@ -3,41 +3,27 @@ import { v4 as uuid } from 'uuid';
 import { SQSEvent, Context as AWSContext } from 'aws-lambda';
 import {
   BaseContext,
+  BaseHandlerConfig,
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
 
-export type SQSMessageHandlerConfig<Message, Context> = {
-  /**
-   * A logger to use in the context.
-   */
-  logger: LoggerInterface;
-  /**
-   * A function for parsing SQS messages into your custom type.
-   */
-  parseMessage: (body: string) => Message;
-  /**
-   * Create a "context" for the lambda execution. (e.g. "data sources")
-   */
-  createRunContext: (base: BaseContext) => Context | Promise<Context>;
+export type SQSMessageHandlerConfig<Message, Context> =
+  BaseHandlerConfig<Context> & {
+    /**
+     * A function for parsing SQS messages into your custom type.
+     */
+    parseMessage: (body: string) => Message;
 
-  useMinimalLogging?: boolean;
-
-  /**
-   * The maximum concurrency for processing messages.
-   *
-   * @default 5
-   */
-  concurrency?: number;
-  /**
-   * Whether or not to use SQS partial batch responses. If set to true, make
-   * sure to also turn on partial batch responses when configuring your event
-   * source mapping by specifying ReportBatchItemFailures for the
-   * FunctionResponseTypes action. For more details see:
-   * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
-   */
-  usePartialBatchResponses?: boolean;
-};
+    /**
+     * Whether or not to use SQS partial batch responses. If set to true, make
+     * sure to also turn on partial batch responses when configuring your event
+     * source mapping by specifying ReportBatchItemFailures for the
+     * FunctionResponseTypes action. For more details see:
+     * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
+     */
+    usePartialBatchResponses?: boolean;
+  };
 
 export type SQSMessageAction<Message, Context> = (
   context: Context & BaseContext,
