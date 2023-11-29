@@ -231,7 +231,7 @@ export class DynamoStreamHandler<Entity, Context> {
         'Processing DynamoDB stream event',
       );
 
-      await processWithOrdering(
+      const processingResult = await processWithOrdering(
         {
           items: event.Records,
           orderBy: (record) => {
@@ -258,7 +258,6 @@ export class DynamoStreamHandler<Entity, Context> {
             );
           },
           concurrency: this.config.concurrency ?? 5,
-          stopOnError: false,
         },
         async (record) => {
           const recordLogger = this.config.logger.child({
@@ -325,6 +324,9 @@ export class DynamoStreamHandler<Entity, Context> {
           }
         },
       );
+
+      processingResult.throwOnUnprocessedRecords();
+      context.logger.info('Successfully processed all DynamoDB stream records');
     });
   }
 

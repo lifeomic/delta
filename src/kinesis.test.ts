@@ -207,6 +207,56 @@ describe('KinesisEventHandler', () => {
       });
     });
 
+    test('throws aggregate error if there are unprocessed records', async () => {
+      expect.assertions(2);
+
+      const handler = new KinesisEventHandler({
+        logger,
+        parseEvent: testSerializer.parseEvent,
+        createRunContext: () => ({}),
+      })
+        .onEvent((ctx, message) => {
+          if (message.data !== 'test-event-1') {
+            throw new Error(`Failed to process ${message.data}`);
+          }
+        })
+        .lambda();
+
+      try {
+        await handler(
+          {
+            Records: [
+              {
+                kinesis: {
+                  partitionKey: uuid(),
+                  data: JSON.stringify({ data: 'test-event-1' }),
+                },
+              },
+              {
+                kinesis: {
+                  partitionKey: uuid(),
+                  data: JSON.stringify({ data: 'test-event-2' }),
+                },
+              },
+              {
+                kinesis: {
+                  partitionKey: uuid(),
+                  data: JSON.stringify({ data: 'test-event-3' }),
+                },
+              },
+            ] as any,
+          },
+          {} as any,
+        );
+      } catch (e) {
+        expect(e).toBeInstanceOf(AggregateError);
+        expect(e.errors).toEqual([
+          new Error('Failed to process test-event-2'),
+          new Error('Failed to process test-event-3'),
+        ]);
+      }
+    });
+
     test('allows overriding context and logger', async () => {
       const testValue = uuid();
 
