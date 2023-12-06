@@ -47,8 +47,18 @@ export const withHealthCheckHandling =
   };
 
 export type ProcessWithOrderingParams<T> = {
+  /**
+   * The list of items to process.
+   */
   items: T[];
+  /**
+   * A function for determining the "order" of an item. Should return a
+   * string that will be used to order items lexicographically.
+   */
   orderBy: (msg: T) => string;
+  /**
+   * The limit on the number of items to process concurrently at any time.
+   */
   concurrency: number;
 };
 
