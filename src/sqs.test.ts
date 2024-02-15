@@ -102,18 +102,23 @@ describe('SQSMessageHandler', () => {
     );
 
     // Assert that the message body was redacted.
-    expect(logger.info).toHaveBeenCalledWith({
-      event: { Records: [{ attributes: {}, body: 'REDACTED' }] },
-    }, "Processing SQS topic message")
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        event: { Records: [{ attributes: {}, body: 'REDACTED' }] },
+      },
+      'Processing SQS topic message',
+    );
   });
 
   test('if redaction fails log the message', async () => {
     expect.assertions(4);
 
-    const error = new Error('Failed to redact message')
+    const error = new Error('Failed to redact message');
     const lambda = new SQSMessageHandler({
       logger,
-      redactMessageBody: () => { throw error },
+      redactMessageBody: () => {
+        throw error;
+      },
       parseMessage: testSerializer.parseMessage,
       createRunContext: (ctx) => {
         expect(typeof ctx.correlationId === 'string').toBe(true);
@@ -121,30 +126,31 @@ describe('SQSMessageHandler', () => {
       },
     }).lambda();
 
-    const body = JSON.stringify({ data: 'test-event-1' })
+    const body = JSON.stringify({ data: 'test-event-1' });
     const event = {
-      Records: [
-        { attributes: {}, body },
-      ],
-    } as any
-    const response = await lambda(
-      event,
-      {} as any,
-    );
+      Records: [{ attributes: {}, body }],
+    } as any;
+    const response = await lambda(event, {} as any);
 
     // Expect no failure
     expect(response).toBeUndefined();
 
-    // Assert that the message body was shown unredacted. Logging the 
+    // Assert that the message body was shown unredacted. Logging the
     // unredacted error allows for easier debugging. Leaking a small amount of
     // PHI to Sumo is better than having a system that cannot be debugged.
-    expect(logger.error).toHaveBeenCalledWith({
-      error,
-      body,
-    }, "Failed to redact message body")
-    expect(logger.info).toHaveBeenCalledWith({
-      event,
-    }, "Processing SQS topic message")
+    expect(logger.error).toHaveBeenCalledWith(
+      {
+        error,
+        body,
+      },
+      'Failed to redact message body',
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        event,
+      },
+      'Processing SQS topic message',
+    );
   });
 
   describe('error handling', () => {
