@@ -23,6 +23,13 @@ export type SQSMessageHandlerConfig<Message, Context> =
      * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
      */
     usePartialBatchResponses?: boolean;
+
+    /**
+     * This will be called to redact the message body before logging it. By
+     * default, the full message body is logged.
+     */
+    redactMessageBody?: (body: string) => string;
+
   };
 
 export type SQSMessageAction<Message, Context> = (
@@ -58,13 +65,23 @@ export type SQSPartialBatchResponse = {
   }[];
 };
 
+const safeRedactor = (logger: LoggerInterface, redactor: (body: string) => string) =>
+  (body: string) => {
+    try {
+      return redactor(body);
+    } catch (error) {
+      logger.error({ error, body }, 'Failed to redact message body');
+      return body;
+    }
+  }
+
 /**
  * An abstraction for an SQS message handler.
  */
 export class SQSMessageHandler<Message, Context> {
   private messageActions: SQSMessageAction<Message, Context>[] = [];
 
-  constructor(readonly config: SQSMessageHandlerConfig<Message, Context>) {}
+  constructor(readonly config: SQSMessageHandlerConfig<Message, Context>) { }
 
   /**
    * Adds a message action to the handler.
@@ -96,7 +113,15 @@ export class SQSMessageHandler<Message, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
-      context.logger.info({ event }, 'Processing SQS topic message');
+      const redactor = this.config.redactMessageBody ? safeRedactor(context.logger, this.config.redactMessageBody) : undefined;
+      const redactedEvent = redactor ? {
+        ...event,
+        Records: event.Records.map((record) => ({
+          ...record,
+          body: redactor(record.body),
+        })),
+      } : event;
+      context.logger.info({ event: redactedEvent }, 'Processing SQS topic message');
 
       const processingResult = await processWithOrdering(
         {
@@ -183,13 +208,13 @@ export class SQSMessageHandler<Message, Context> {
         const event: SQSEvent = {
           Records: messages.map(
             (msg) =>
-              // We don't need to mock every field on this event -- there are lots.
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-              ({
-                attributes: {},
-                messageId: uuid(),
-                body: stringifyMessage(msg),
-              } as any),
+            // We don't need to mock every field on this event -- there are lots.
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            ({
+              attributes: {},
+              messageId: uuid(),
+              body: stringifyMessage(msg),
+            } as any),
           ),
         };
 
