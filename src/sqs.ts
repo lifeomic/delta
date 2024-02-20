@@ -7,6 +7,7 @@ import {
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
+import { publicEncrypt } from 'crypto'
 
 export type SQSMessageHandlerConfig<Message, Context> =
   BaseHandlerConfig<Context> & {
@@ -24,11 +25,25 @@ export type SQSMessageHandlerConfig<Message, Context> =
      */
     usePartialBatchResponses?: boolean;
 
-    /**
-     * This will be called to redact the message body before logging it. By
-     * default, the full message body is logged.
-     */
-    redactMessageBody?: (body: string) => string;
+    redactionConfig?: {
+      /**
+       * This will be called to redact the message body before logging it. By
+       * default, the full message body is logged.
+       */
+      redactMessageBody: (body: string) => string;
+
+      /**
+       * The public encryption key used for writing messages that contain
+       * sensitive information but failed to be redacted.
+       */
+      publicEncryptionKey: string;
+
+      /**
+       * Logged with the encypted message to help identify the key used. For
+       * example, this could explain who has access to the key or how to get it.
+       */
+      publicKeyDescription: string;
+    }
   };
 
 export type SQSMessageAction<Message, Context> = (
@@ -65,15 +80,30 @@ export type SQSPartialBatchResponse = {
 };
 
 const safeRedactor =
-  (logger: LoggerInterface, redactor: (body: string) => string) =>
-  (body: string) => {
-    try {
-      return redactor(body);
-    } catch (error) {
-      logger.error({ error, body }, 'Failed to redact message body');
-      return body;
-    }
-  };
+  (logger: LoggerInterface, redactionConfig: NonNullable<SQSMessageHandlerConfig<any, any>['redactionConfig']>) =>
+    (body: string) => {
+      try {
+        return redactionConfig.redactMessageBody(body);
+      } catch (error) {
+        let encryptedBody;
+
+        // If redaction fails, then encrypt the message body and log it.
+        // Encryption allows for developers to decrypt the message if needed
+        // but does not log sensitive inforation the the log stream.
+        try {
+          encryptedBody = publicEncrypt(redactionConfig.publicEncryptionKey, Buffer.from(body)).toString('base64');
+        } catch (error) {
+          // If encryption fails, then log the encryption error and replace
+          // the body with dummy text.
+          logger.error({ error }, 'Failed to encrypt message body');
+          encryptedBody = '[ENCRYPTION FAILED]';
+        }
+
+        // Log the redaction error
+        logger.error({ error, encryptedBody, publicKeyDescription: redactionConfig.publicKeyDescription }, 'Failed to redact message body');
+        return '[REDACTION FAILED]';
+      }
+    };
 
 /**
  * An abstraction for an SQS message handler.
@@ -81,7 +111,7 @@ const safeRedactor =
 export class SQSMessageHandler<Message, Context> {
   private messageActions: SQSMessageAction<Message, Context>[] = [];
 
-  constructor(readonly config: SQSMessageHandlerConfig<Message, Context>) {}
+  constructor(readonly config: SQSMessageHandlerConfig<Message, Context>) { }
 
   /**
    * Adds a message action to the handler.
@@ -113,17 +143,17 @@ export class SQSMessageHandler<Message, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
-      const redactor = this.config.redactMessageBody
-        ? safeRedactor(context.logger, this.config.redactMessageBody)
+      const redactor = this.config.redactionConfig
+        ? safeRedactor(context.logger, this.config.redactionConfig)
         : undefined;
       const redactedEvent = redactor
         ? {
-            ...event,
-            Records: event.Records.map((record) => ({
-              ...record,
-              body: redactor(record.body),
-            })),
-          }
+          ...event,
+          Records: event.Records.map((record) => ({
+            ...record,
+            body: redactor(record.body),
+          })),
+        }
         : event;
       context.logger.info(
         { event: redactedEvent },
@@ -215,13 +245,13 @@ export class SQSMessageHandler<Message, Context> {
         const event: SQSEvent = {
           Records: messages.map(
             (msg) =>
-              // We don't need to mock every field on this event -- there are lots.
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-              ({
-                attributes: {},
-                messageId: uuid(),
-                body: stringifyMessage(msg),
-              } as any),
+            // We don't need to mock every field on this event -- there are lots.
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            ({
+              attributes: {},
+              messageId: uuid(),
+              body: stringifyMessage(msg),
+            } as any),
           ),
         };
 
