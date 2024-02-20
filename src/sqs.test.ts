@@ -1,8 +1,8 @@
 import { v4 as uuid } from 'uuid';
 import { LoggerInterface } from '@lifeomic/logging';
 import { SQSMessageAction, SQSMessageHandler } from './sqs';
-import { promises as fs } from 'fs'
-import { privateDecrypt } from 'crypto'
+import { promises as fs } from 'fs';
+import { privateDecrypt } from 'crypto';
 
 const logger: jest.Mocked<LoggerInterface> = {
   info: jest.fn(),
@@ -12,8 +12,11 @@ const logger: jest.Mocked<LoggerInterface> = {
 
 let publicKey: string;
 beforeAll(async () => {
-  publicKey = await fs.readFile(__dirname + '/__fixtures__/public-key.pem', 'utf8')
-})
+  publicKey = await fs.readFile(
+    __dirname + '/__fixtures__/public-key.pem',
+    'utf8',
+  );
+});
 
 beforeEach(() => {
   logger.info.mockReset();
@@ -158,15 +161,21 @@ describe('SQSMessageHandler', () => {
       {
         error,
         encryptedBody: expect.any(String),
-        publicKeyDescription: 'test-public-key'
+        publicKeyDescription: 'test-public-key',
       },
       'Failed to redact message body',
     );
 
     // Verify that the encrypted body can be decrypted.
-    const privateKey = await fs.readFile(__dirname + '/__fixtures__/private-key.pem', 'utf8')
-    const encryptedBody = logger.error.mock.calls[0][0].encryptedBody
-    const decrypted = privateDecrypt(privateKey, Buffer.from(encryptedBody, 'base64')).toString('utf8');
+    const privateKey = await fs.readFile(
+      __dirname + '/__fixtures__/private-key.pem',
+      'utf8',
+    );
+    const encryptedBody = logger.error.mock.calls[0][0].encryptedBody;
+    const decrypted = privateDecrypt(
+      privateKey,
+      Buffer.from(encryptedBody, 'base64'),
+    ).toString('utf8');
     expect(decrypted).toEqual(body);
 
     // Verify the the body was redacted.
@@ -176,9 +185,9 @@ describe('SQSMessageHandler', () => {
           ...event,
           Records: event.Records.map((record: any) => ({
             ...record,
-            body: "[REDACTION FAILED]"
-          }))
-        }
+            body: '[REDACTION FAILED]',
+          })),
+        },
       },
       'Processing SQS topic message',
     );
@@ -219,8 +228,8 @@ describe('SQSMessageHandler', () => {
     expect(logger.error).toHaveBeenCalledWith(
       {
         error,
-        encryptedBody: "[ENCRYPTION FAILED]", // Signals that encryption failed
-        publicKeyDescription: 'test-public-key'
+        encryptedBody: '[ENCRYPTION FAILED]', // Signals that encryption failed
+        publicKeyDescription: 'test-public-key',
       },
       'Failed to redact message body',
     );
@@ -228,7 +237,7 @@ describe('SQSMessageHandler', () => {
     // When encryption fails, the failure is logged.
     expect(logger.error).toHaveBeenCalledWith(
       {
-        error: expect.anything()
+        error: expect.anything(),
       },
       'Failed to encrypt message body',
     );
@@ -240,9 +249,9 @@ describe('SQSMessageHandler', () => {
           ...event,
           Records: event.Records.map((record: any) => ({
             ...record,
-            body: "[REDACTION FAILED]"
-          }))
-        }
+            body: '[REDACTION FAILED]',
+          })),
+        },
       },
       'Processing SQS topic message',
     );
