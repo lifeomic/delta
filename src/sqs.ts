@@ -7,6 +7,7 @@ import {
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
+import { publicEncrypt } from 'crypto';
 
 export type SQSMessageHandlerConfig<Message, Context> =
   BaseHandlerConfig<Context> & {
@@ -23,6 +24,26 @@ export type SQSMessageHandlerConfig<Message, Context> =
      * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
      */
     usePartialBatchResponses?: boolean;
+
+    redactionConfig?: {
+      /**
+       * This will be called to redact the message body before logging it. By
+       * default, the full message body is logged.
+       */
+      redactMessageBody: (body: string) => string;
+
+      /**
+       * The public encryption key used for writing messages that contain
+       * sensitive information but failed to be redacted.
+       */
+      publicEncryptionKey: string;
+
+      /**
+       * Logged with the encypted message to help identify the key used. For
+       * example, this could explain who has access to the key or how to get it.
+       */
+      publicKeyDescription: string;
+    };
   };
 
 export type SQSMessageAction<Message, Context> = (
@@ -57,6 +78,47 @@ export type SQSPartialBatchResponse = {
     itemIdentifier: string;
   }[];
 };
+
+const safeRedactor =
+  (
+    logger: LoggerInterface,
+    redactionConfig: NonNullable<
+      SQSMessageHandlerConfig<any, any>['redactionConfig']
+    >,
+  ) =>
+  (body: string) => {
+    try {
+      return redactionConfig.redactMessageBody(body);
+    } catch (error) {
+      let encryptedBody;
+
+      // If redaction fails, then encrypt the message body and log it.
+      // Encryption allows for developers to decrypt the message if needed
+      // but does not log sensitive inforation the the log stream.
+      try {
+        encryptedBody = publicEncrypt(
+          redactionConfig.publicEncryptionKey,
+          Buffer.from(body),
+        ).toString('base64');
+      } catch (error) {
+        // If encryption fails, then log the encryption error and replace
+        // the body with dummy text.
+        logger.error({ error }, 'Failed to encrypt message body');
+        encryptedBody = '[ENCRYPTION FAILED]';
+      }
+
+      // Log the redaction error
+      logger.error(
+        {
+          error,
+          encryptedBody,
+          publicKeyDescription: redactionConfig.publicKeyDescription,
+        },
+        'Failed to redact message body',
+      );
+      return '[REDACTION FAILED]';
+    }
+  };
 
 /**
  * An abstraction for an SQS message handler.
@@ -96,7 +158,22 @@ export class SQSMessageHandler<Message, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
-      context.logger.info({ event }, 'Processing SQS topic message');
+      const redactor = this.config.redactionConfig
+        ? safeRedactor(context.logger, this.config.redactionConfig)
+        : undefined;
+      const redactedEvent = redactor
+        ? {
+            ...event,
+            Records: event.Records.map((record) => ({
+              ...record,
+              body: redactor(record.body),
+            })),
+          }
+        : event;
+      context.logger.info(
+        { event: redactedEvent },
+        'Processing SQS topic message',
+      );
 
       const processingResult = await processWithOrdering(
         {

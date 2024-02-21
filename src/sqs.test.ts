@@ -1,6 +1,8 @@
 import { v4 as uuid } from 'uuid';
 import { LoggerInterface } from '@lifeomic/logging';
 import { SQSMessageAction, SQSMessageHandler } from './sqs';
+import { promises as fs } from 'fs';
+import { privateDecrypt } from 'crypto';
 
 const logger: jest.Mocked<LoggerInterface> = {
   info: jest.fn(),
@@ -8,8 +10,17 @@ const logger: jest.Mocked<LoggerInterface> = {
   child: jest.fn(),
 } as any;
 
+let publicKey: string;
+beforeAll(async () => {
+  publicKey = await fs.readFile(
+    __dirname + '/__fixtures__/public-key.pem',
+    'utf8',
+  );
+});
+
 beforeEach(() => {
   logger.info.mockReset();
+  logger.error.mockReset();
   logger.child.mockReset();
   logger.child.mockImplementation(() => logger);
 });
@@ -76,6 +87,173 @@ describe('SQSMessageHandler', () => {
     expect(response).toBeUndefined();
     expect(logger.child).toHaveBeenCalledWith(
       expect.objectContaining({ correlationId: expect.any(String) }),
+    );
+  });
+
+  test('allows body redaction', async () => {
+    expect.assertions(2);
+
+    const lambda = new SQSMessageHandler({
+      logger,
+      redactionConfig: {
+        redactMessageBody: () => 'REDACTED',
+        publicEncryptionKey: publicKey,
+        publicKeyDescription: 'test-public-key',
+      },
+      parseMessage: testSerializer.parseMessage,
+      createRunContext: (ctx) => {
+        expect(typeof ctx.correlationId === 'string').toBe(true);
+        return {};
+      },
+    }).lambda();
+
+    await lambda(
+      {
+        Records: [
+          { attributes: {}, body: JSON.stringify({ data: 'test-event-1' }) },
+        ],
+      } as any,
+      {} as any,
+    );
+
+    // Assert that the message body was redacted.
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        event: { Records: [{ attributes: {}, body: 'REDACTED' }] },
+      },
+      'Processing SQS topic message',
+    );
+  });
+
+  test('if redaction fails, a redacted body is logged with an encrypted body', async () => {
+    expect.assertions(5);
+
+    const error = new Error('Failed to redact message');
+    const lambda = new SQSMessageHandler({
+      logger,
+      redactionConfig: {
+        redactMessageBody: () => {
+          throw error;
+        },
+        publicEncryptionKey: publicKey,
+        publicKeyDescription: 'test-public-key',
+      },
+      parseMessage: testSerializer.parseMessage,
+      createRunContext: (ctx) => {
+        expect(typeof ctx.correlationId === 'string').toBe(true);
+        return {};
+      },
+    }).lambda();
+
+    const body = JSON.stringify({ data: 'test-event-1' });
+    const event = {
+      Records: [{ attributes: {}, body }],
+    } as any;
+    const response = await lambda(event, {} as any);
+
+    // Expect no failure
+    expect(response).toBeUndefined();
+
+    // Assert that the message body was shown redacted. Along with the
+    // redacted body, an encrypted body is also logged with the redaction
+    // error to help debugging.
+    expect(logger.error).toHaveBeenCalledWith(
+      {
+        error,
+        encryptedBody: expect.any(String),
+        publicKeyDescription: 'test-public-key',
+      },
+      'Failed to redact message body',
+    );
+
+    // Verify that the encrypted body can be decrypted.
+    const privateKey = await fs.readFile(
+      __dirname + '/__fixtures__/private-key.pem',
+      'utf8',
+    );
+    const encryptedBody = logger.error.mock.calls[0][0].encryptedBody;
+    const decrypted = privateDecrypt(
+      privateKey,
+      Buffer.from(encryptedBody, 'base64'),
+    ).toString('utf8');
+    expect(decrypted).toEqual(body);
+
+    // Verify the the body was redacted.
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        event: {
+          ...event,
+          Records: event.Records.map((record: any) => ({
+            ...record,
+            body: '[REDACTION FAILED]',
+          })),
+        },
+      },
+      'Processing SQS topic message',
+    );
+  });
+
+  test('if redaction fails, and encryption fails, a redacted body is logged with the encryption failure', async () => {
+    expect.assertions(5);
+
+    const error = new Error('Failed to redact message');
+    const lambda = new SQSMessageHandler({
+      logger,
+      redactionConfig: {
+        redactMessageBody: () => {
+          throw error;
+        },
+        publicEncryptionKey: 'not-a-valid-key',
+        publicKeyDescription: 'test-public-key',
+      },
+      parseMessage: testSerializer.parseMessage,
+      createRunContext: (ctx) => {
+        expect(typeof ctx.correlationId === 'string').toBe(true);
+        return {};
+      },
+    }).lambda();
+
+    const body = JSON.stringify({ data: 'test-event-1' });
+    const event = {
+      Records: [{ attributes: {}, body }],
+    } as any;
+    const response = await lambda(event, {} as any);
+
+    // Expect no failure
+    expect(response).toBeUndefined();
+
+    // Assert that the message body was shown redacted. Along with the
+    // redacted body, an encrypted body is also logged with the redaction
+    // error to help debugging.
+    expect(logger.error).toHaveBeenCalledWith(
+      {
+        error,
+        encryptedBody: '[ENCRYPTION FAILED]', // Signals that encryption failed
+        publicKeyDescription: 'test-public-key',
+      },
+      'Failed to redact message body',
+    );
+
+    // When encryption fails, the failure is logged.
+    expect(logger.error).toHaveBeenCalledWith(
+      {
+        error: expect.anything(),
+      },
+      'Failed to encrypt message body',
+    );
+
+    // Verify the the body was redacted.
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        event: {
+          ...event,
+          Records: event.Records.map((record: any) => ({
+            ...record,
+            body: '[REDACTION FAILED]',
+          })),
+        },
+      },
+      'Processing SQS topic message',
     );
   });
 
