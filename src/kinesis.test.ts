@@ -14,8 +14,9 @@ beforeEach(() => {
 });
 
 const testSerializer = {
-  parseEvent: (msg: string) => JSON.parse(msg),
-  stringifyEvent: (msg: any) => JSON.stringify(msg),
+  parseEvent: (msg: Record<string, unknown>) => msg,
+  toKinesisNativeRecord: (msg: Record<string, unknown>) =>
+    Buffer.from(JSON.stringify(msg)).toString('base64'),
 };
 
 describe('KinesisEventHandler', () => {
@@ -64,7 +65,9 @@ describe('KinesisEventHandler', () => {
           {
             kinesis: {
               partitionKey: uuid(),
-              data: JSON.stringify({ data: 'test-event-1' }),
+              data: testSerializer.toKinesisNativeRecord({
+                data: 'test-event-1',
+              }),
             },
           },
         ],
@@ -104,25 +107,33 @@ describe('KinesisEventHandler', () => {
           {
             kinesis: {
               partitionKey: uuid(),
-              data: JSON.stringify({ data: 'test-event-1' }),
+              data: testSerializer.toKinesisNativeRecord({
+                data: 'test-event-1',
+              }),
             },
           },
           {
             kinesis: {
               partitionKey: uuid(),
-              data: JSON.stringify({ data: 'test-event-2' }),
+              data: testSerializer.toKinesisNativeRecord({
+                data: 'test-event-2',
+              }),
             },
           },
           {
             kinesis: {
               partitionKey: uuid(),
-              data: JSON.stringify({ data: 'test-event-3' }),
+              data: testSerializer.toKinesisNativeRecord({
+                data: 'test-event-3',
+              }),
             },
           },
           {
             kinesis: {
               partitionKey: uuid(),
-              data: JSON.stringify({ data: 'test-event-4' }),
+              data: testSerializer.toKinesisNativeRecord({
+                data: 'test-event-4',
+              }),
             },
           },
         ],
@@ -190,9 +201,7 @@ describe('KinesisEventHandler', () => {
         .onEvent((ctx, msg) => {
           ctx.doSomething(msg);
         })
-        .harness({
-          stringifyEvent: testSerializer.stringifyEvent,
-        });
+        .harness();
 
       await sendEvent({
         events: [{ data: 'test-event-1' }, { data: 'test-event-2' }],
@@ -229,19 +238,25 @@ describe('KinesisEventHandler', () => {
               {
                 kinesis: {
                   partitionKey: uuid(),
-                  data: JSON.stringify({ data: 'test-event-1' }),
+                  data: testSerializer.toKinesisNativeRecord({
+                    data: 'test-event-1',
+                  }),
                 },
               },
               {
                 kinesis: {
                   partitionKey: uuid(),
-                  data: JSON.stringify({ data: 'test-event-2' }),
+                  data: testSerializer.toKinesisNativeRecord({
+                    data: 'test-event-2',
+                  }),
                 },
               },
               {
                 kinesis: {
                   partitionKey: uuid(),
-                  data: JSON.stringify({ data: 'test-event-3' }),
+                  data: testSerializer.toKinesisNativeRecord({
+                    data: 'test-event-3',
+                  }),
                 },
               },
             ] as any,
@@ -281,7 +296,6 @@ describe('KinesisEventHandler', () => {
           ctx.dataSources.doSomething((ctx as any).testValue);
         })
         .harness({
-          stringifyEvent: testSerializer.stringifyEvent,
           logger: overrideLogger as any,
           createRunContext: () => ({ dataSources, testValue }),
         });
@@ -320,19 +334,25 @@ describe('KinesisEventHandler', () => {
             {
               kinesis: {
                 partitionKey: uuid(),
-                data: JSON.stringify({ data: 'test-event-1' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-1',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: uuid(),
-                data: JSON.stringify({ data: 'test-event-2' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-2',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: uuid(),
-                data: JSON.stringify({ data: 'test-event-3' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-3',
+                }),
               },
             },
           ] as any,
@@ -371,37 +391,49 @@ describe('KinesisEventHandler', () => {
             {
               kinesis: {
                 partitionKey: 'group-id',
-                data: JSON.stringify({ data: 'test-event-1' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-1',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: uuid(),
-                data: JSON.stringify({ data: 'test-event-2' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-2',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: 'group-id-2',
-                data: JSON.stringify({ data: 'test-event-other-1' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-other-1',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: 'group-id',
-                data: JSON.stringify({ data: 'test-event-3' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-3',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: 'group-id-2',
-                data: JSON.stringify({ data: 'test-event-other-2' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-other-2',
+                }),
               },
             },
             {
               kinesis: {
                 partitionKey: uuid(),
-                data: JSON.stringify({ data: 'test-event-4' }),
+                data: testSerializer.toKinesisNativeRecord({
+                  data: 'test-event-4',
+                }),
               },
             },
           ] as any,
