@@ -13,7 +13,7 @@ export type KinesisEventHandlerConfig<Event, Context> =
     /**
      * A function for parsing the Kinesis event data into your custom type.
      */
-    parseEvent: (body: Record<string, unknown>) => Event;
+    parseEvent: (body: string) => Event;
   };
 
 export type KinesisEventAction<Event, Context> = (
@@ -21,7 +21,11 @@ export type KinesisEventAction<Event, Context> = (
   event: Event,
 ) => void | Promise<void>;
 
-export type KinesisEventHandlerHarnessOptions<Context> = {
+export type KinesisEventHandlerHarnessOptions<Event, Context> = {
+  /**
+   * A function for stringifying events.
+   */
+  stringifyEvent: (event: Event) => string;
   /**
    * An optional override for the logger.
    */
@@ -85,9 +89,7 @@ export class KinesisEventHandler<Event, Context> {
           });
 
           const parsedEvent = this.config.parseEvent(
-            JSON.parse(
-              Buffer.from(record.kinesis.data, 'base64').toString('utf8'),
-            ) as Record<string, unknown>,
+            Buffer.from(record.kinesis.data, 'base64').toString('utf8'),
           );
 
           for (const action of this.actions) {
@@ -104,8 +106,12 @@ export class KinesisEventHandler<Event, Context> {
   }
 
   harness({
+    stringifyEvent,
     ...overrides
-  }: KinesisEventHandlerHarnessOptions<Context> = {}): KinesisEventHandlerHarnessContext<Event> {
+  }: KinesisEventHandlerHarnessOptions<
+    Event,
+    Context
+  >): KinesisEventHandlerHarnessContext<Event> {
     // Make a copy of the handler.
     let handler = new KinesisEventHandler({ ...this.config, ...overrides });
     for (const action of this.actions) {
@@ -121,7 +127,7 @@ export class KinesisEventHandler<Event, Context> {
             eventID: uuid(),
             kinesis: {
               partitionKey: uuid(),
-              data: Buffer.from(JSON.stringify(e)).toString('base64'),
+              data: Buffer.from(stringifyEvent(e)).toString('base64'),
             },
           })),
         };

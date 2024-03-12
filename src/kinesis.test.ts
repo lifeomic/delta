@@ -14,7 +14,8 @@ beforeEach(() => {
 });
 
 const testSerializer = {
-  parseEvent: (msg: Record<string, unknown>) => msg,
+  parseEvent: (msg: string) => JSON.parse(msg),
+  stringifyEvent: (msg: any) => JSON.stringify(msg),
   toKinesisNativeRecord: (msg: Record<string, unknown>) =>
     Buffer.from(JSON.stringify(msg)).toString('base64'),
 };
@@ -201,7 +202,9 @@ describe('KinesisEventHandler', () => {
         .onEvent((ctx, msg) => {
           ctx.doSomething(msg);
         })
-        .harness();
+        .harness({
+          stringifyEvent: testSerializer.stringifyEvent,
+        });
 
       await sendEvent({
         events: [{ data: 'test-event-1' }, { data: 'test-event-2' }],
@@ -296,6 +299,7 @@ describe('KinesisEventHandler', () => {
           ctx.dataSources.doSomething((ctx as any).testValue);
         })
         .harness({
+          stringifyEvent: testSerializer.stringifyEvent,
           logger: overrideLogger as any,
           createRunContext: () => ({ dataSources, testValue }),
         });
