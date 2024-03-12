@@ -26,7 +26,6 @@ export type KinesisEventHandlerHarnessOptions<Event, Context> = {
    * A function for stringifying events.
    */
   stringifyEvent: (event: Event) => string;
-
   /**
    * An optional override for the logger.
    */
@@ -89,7 +88,9 @@ export class KinesisEventHandler<Event, Context> {
             eventId: record.eventID,
           });
 
-          const parsedEvent = this.config.parseEvent(record.kinesis.data);
+          const parsedEvent = this.config.parseEvent(
+            Buffer.from(record.kinesis.data, 'base64').toString('utf8'),
+          );
 
           for (const action of this.actions) {
             await action({ ...context, logger: eventLogger }, parsedEvent);
@@ -126,7 +127,7 @@ export class KinesisEventHandler<Event, Context> {
             eventID: uuid(),
             kinesis: {
               partitionKey: uuid(),
-              data: stringifyEvent(e),
+              data: Buffer.from(stringifyEvent(e)).toString('base64'),
             },
           })),
         };
