@@ -199,21 +199,23 @@ export class SQSMessageHandler<Message, Context> {
         },
       );
 
-      if (!processingResult.hasUnprocessedRecords) {
+      const unprocessedRecordsByGroupIdEntries = Object.entries(
+        processingResult.unprocessedRecordsByGroupId,
+      );
+
+      if (!unprocessedRecordsByGroupIdEntries.length) {
         context.logger.info('Successfully processed all SQS messages');
+        return;
       }
 
       if (!this.config.usePartialBatchResponses) {
         processingResult.throwOnUnprocessedRecords();
-        return;
       }
 
       // SQS partial batching expects that you return an ordered list of
       // failures. We map through each group and add them to the batch item
       // failures in order for each group.
-      const batchItemFailures = Object.entries(
-        processingResult.unprocessedRecords,
-      )
+      const batchItemFailures = unprocessedRecordsByGroupIdEntries
         .map(([groupId, record]) => {
           const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
           context.logger.error(

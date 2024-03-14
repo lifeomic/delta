@@ -2,7 +2,6 @@ import { LoggerInterface } from '@lifeomic/logging';
 import { Context } from 'aws-lambda';
 import pMap from 'p-map';
 import groupBy from 'lodash/groupBy';
-import zipObject from 'lodash/zipObject';
 
 export type BaseContext = {
   logger: LoggerInterface;
@@ -91,27 +90,30 @@ export const processWithOrdering = async <T>(
   process: (item: T) => Promise<void>,
 ) => {
   const groupedItems = groupBy(params.items, params.orderBy);
-  const listIds = Object.keys(groupedItems);
-  const lists = Object.values(groupedItems);
-  const unprocessedRecordsByListId = zipObject<{ error: any; items: T[] }>(
-    listIds,
-    lists.map(() => ({ error: null, items: [] })),
-  );
+  const groupIds = Object.keys(groupedItems);
+  const groups = Object.values(groupedItems);
+  const unprocessedRecordsByGroupId: Record<
+    string,
+    {
+      error: any;
+      items: T[];
+    }
+  > = {};
 
   await pMap(
-    lists,
-    async (list, listIndex) => {
-      for (let i = 0; i < list.length; i++) {
-        const item = list[i];
+    groups,
+    async (group, groupIndex) => {
+      for (let i = 0; i < group.length; i++) {
+        const item = group[i];
 
         try {
           await process(item);
         } catch (error) {
           // Keep track of all unprocessed items and stop processing the current
-          // list as soon as we encounter the first error.
-          unprocessedRecordsByListId[listIds[listIndex]] = {
+          // group as soon as we encounter the first error.
+          unprocessedRecordsByGroupId[groupIds[groupIndex]] = {
             error,
-            items: list.slice(i),
+            items: group.slice(i),
           };
           return;
         }
@@ -122,15 +124,13 @@ export const processWithOrdering = async <T>(
     },
   );
 
-  const aggregateErrors = Object.values(unprocessedRecordsByListId)
-    .map((record) => record.error)
-    .filter(Boolean)
-    .flat();
-
   return {
-    hasUnprocessedRecords: aggregateErrors.length > 0,
-    unprocessedRecords: unprocessedRecordsByListId,
+    unprocessedRecordsByGroupId,
     throwOnUnprocessedRecords: () => {
+      const aggregateErrors = Object.values(unprocessedRecordsByGroupId).map(
+        (record) => record.error,
+      );
+
       if (aggregateErrors.length) {
         throw new AggregateError(aggregateErrors);
       }
