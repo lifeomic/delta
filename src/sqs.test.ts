@@ -300,7 +300,8 @@ describe('SQSMessageHandler', () => {
         body: JSON.stringify({ name: 'test-event-8' }),
       },
     ];
-    const messageHandler: SQSMessageAction<{ name: string }, any> = (
+
+    const errorMessageHandler: SQSMessageAction<{ name: string }, any> = (
       ctx,
       message,
     ) => {
@@ -308,6 +309,13 @@ describe('SQSMessageHandler', () => {
       if (message.name === 'test-event-3' || message.name === 'test-event-7') {
         throw new Error(`Failed to process message ${message.name}`);
       }
+    };
+
+    const successMessageHandler: SQSMessageAction<
+      { name: string },
+      any
+    > = () => {
+      return Promise.resolve();
     };
 
     test('throws on unprocessed events by default', async () => {
@@ -318,7 +326,7 @@ describe('SQSMessageHandler', () => {
         createRunContext: () => ({}),
         concurrency: 2,
       })
-        .onMessage(messageHandler)
+        .onMessage(errorMessageHandler)
         .lambda();
 
       try {
@@ -347,7 +355,7 @@ describe('SQSMessageHandler', () => {
         // when using concurrency.
         concurrency: 2,
       })
-        .onMessage(messageHandler)
+        .onMessage(errorMessageHandler)
         .lambda();
 
       const result = await handler(
@@ -357,14 +365,61 @@ describe('SQSMessageHandler', () => {
         {} as any,
       );
 
+      const batchItemFailures = [
+        { itemIdentifier: 'message-3' },
+        { itemIdentifier: 'message-4' },
+        { itemIdentifier: 'message-7' },
+        { itemIdentifier: 'message-8' },
+      ];
+
       expect(result).toEqual({
-        batchItemFailures: [
-          { itemIdentifier: 'message-3' },
-          { itemIdentifier: 'message-4' },
-          { itemIdentifier: 'message-7' },
-          { itemIdentifier: 'message-8' },
-        ],
+        batchItemFailures,
       });
+      expect(logger.info).not.toHaveBeenCalledWith(
+        'Successfully processed all SQS messages',
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        {
+          batchItemFailures,
+        },
+        'Sending SQS partial batch response',
+      );
+    });
+
+    test('returns nothing when all events are processed successfully', async () => {
+      const handler = new SQSMessageHandler({
+        logger,
+        parseMessage: testSerializer.parseMessage,
+        createRunContext: () => ({}),
+        usePartialBatchResponses: true,
+        // Make sure partial batch responses are returned in order even
+        // when using concurrency.
+        concurrency: 2,
+      })
+        .onMessage(successMessageHandler)
+        .lambda();
+
+      const result = await handler(
+        {
+          Records: records,
+        } as any,
+        {} as any,
+      );
+
+      expect(result).toEqual(undefined);
+      expect(logger.error).not.toHaveBeenCalledWith(
+        expect.any(Object),
+        'Failed to fully process message group',
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        'Successfully processed all SQS messages',
+      );
+      expect(logger.info).not.toHaveBeenCalledWith(
+        {
+          batchItemFailures: expect.any(Array),
+        },
+        'Sending SQS partial batch response',
+      );
     });
   });
 
