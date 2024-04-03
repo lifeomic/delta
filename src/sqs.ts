@@ -1,6 +1,6 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
-import { SQSEvent, Context as AWSContext } from 'aws-lambda';
+import { SQSEvent, Context as AWSContext, SQSRecord } from 'aws-lambda';
 import {
   BaseContext,
   BaseHandlerConfig,
@@ -161,13 +161,19 @@ export class SQSMessageHandler<Message, Context> {
       const redactor = this.config.redactionConfig
         ? safeRedactor(context.logger, this.config.redactionConfig)
         : undefined;
+
+      const redactRecord = (record: SQSRecord): SQSRecord =>
+        redactor
+          ? {
+              ...record,
+              body: redactor(record.body),
+            }
+          : record;
+
       const redactedEvent = redactor
         ? {
             ...event,
-            Records: event.Records.map((record) => ({
-              ...record,
-              body: redactor(record.body),
-            })),
+            Records: event.Records.map(redactRecord),
           }
         : event;
       context.logger.info(
@@ -218,12 +224,14 @@ export class SQSMessageHandler<Message, Context> {
       const batchItemFailures = unprocessedRecordsByGroupIdEntries
         .map(([groupId, record]) => {
           const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
+
           context.logger.error(
             {
               groupId,
               err: record.error,
-              failedRecord,
-              subsequentUnprocessedRecords,
+              failedRecord: redactRecord(failedRecord),
+              subsequentUnprocessedRecords:
+                subsequentUnprocessedRecords.map(redactRecord),
             },
             'Failed to fully process message group',
           );

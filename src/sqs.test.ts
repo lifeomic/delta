@@ -365,6 +365,46 @@ describe('SQSMessageHandler', () => {
         {} as any,
       );
 
+      // Expect that the bodies have not been redacted. The assertion is done
+      // in two groups
+      // First failure group, expecting message bodies
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          failedRecord: expect.objectContaining({
+            body: JSON.stringify({
+              name: `test-event-3`,
+            }),
+          }),
+          subsequentUnprocessedRecords: [
+            expect.objectContaining({
+              body: JSON.stringify({
+                name: `test-event-4`,
+              }),
+            }),
+          ],
+        }),
+        'Failed to fully process message group',
+      );
+
+      // Second failure group, expecting message bodies
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          failedRecord: expect.objectContaining({
+            body: JSON.stringify({
+              name: `test-event-7`,
+            }),
+          }),
+          subsequentUnprocessedRecords: [
+            expect.objectContaining({
+              body: JSON.stringify({
+                name: `test-event-8`,
+              }),
+            }),
+          ],
+        }),
+        'Failed to fully process message group',
+      );
+
       const batchItemFailures = [
         { itemIdentifier: 'message-3' },
         { itemIdentifier: 'message-4' },
@@ -421,6 +461,68 @@ describe('SQSMessageHandler', () => {
         'Sending SQS partial batch response',
       );
     });
+
+    test('redacts bodies of partial failures when redaction is enabled', async () => {
+      const handler = new SQSMessageHandler({
+        logger,
+        parseMessage: testSerializer.parseMessage,
+        redactionConfig: {
+          redactMessageBody: () => 'REDACTED',
+          publicEncryptionKey: publicKey,
+          publicKeyDescription: 'test-public-key',
+        },
+        createRunContext: () => ({}),
+        usePartialBatchResponses: true,
+        // Make sure partial batch responses are returned in order even
+        // when using concurrency.
+        concurrency: 2,
+      })
+        .onMessage(errorMessageHandler)
+        .lambda();
+
+      await handler(
+        {
+          Records: records,
+        } as any,
+        {} as any,
+      );
+
+      // Expect that the bodies have been redacted. The assertion is done
+      // in two groups
+      // First failure group, expecting message bodies are redacted
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          failedRecord: expect.objectContaining({
+            body: 'REDACTED',
+            messageId: 'message-3',
+          }),
+          subsequentUnprocessedRecords: [
+            expect.objectContaining({
+              body: 'REDACTED',
+              messageId: 'message-4',
+            }),
+          ],
+        }),
+        'Failed to fully process message group',
+      );
+
+      // Second failure group, expecting message bodies are redacted
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          failedRecord: expect.objectContaining({
+            body: 'REDACTED',
+            messageId: 'message-7',
+          }),
+          subsequentUnprocessedRecords: [
+            expect.objectContaining({
+              body: 'REDACTED',
+              messageId: 'message-8',
+            }),
+          ],
+        }),
+        'Failed to fully process message group',
+      );
+    });
   });
 
   test('sending messages with context', async () => {
@@ -461,42 +563,58 @@ describe('SQSMessageHandler', () => {
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       1,
       'first-handler',
-      { data: 'test-event-1' },
+      {
+        data: 'test-event-1',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       2,
       'second-handler',
-      { data: 'test-event-1' },
+      {
+        data: 'test-event-1',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       3,
       'first-handler',
-      { data: 'test-event-2' },
+      {
+        data: 'test-event-2',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       4,
       'second-handler',
-      { data: 'test-event-2' },
+      {
+        data: 'test-event-2',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       5,
       'first-handler',
-      { data: 'test-event-3' },
+      {
+        data: 'test-event-3',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       6,
       'second-handler',
-      { data: 'test-event-3' },
+      {
+        data: 'test-event-3',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       7,
       'first-handler',
-      { data: 'test-event-4' },
+      {
+        data: 'test-event-4',
+      },
     );
     expect(dataSources.doSomething).toHaveBeenNthCalledWith(
       8,
       'second-handler',
-      { data: 'test-event-4' },
+      {
+        data: 'test-event-4',
+      },
     );
   });
 
