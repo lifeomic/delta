@@ -114,11 +114,8 @@ describe('DynamoStreamHandler', () => {
         {} as any,
       );
     } catch (e: any) {
-      expect(e).toBeInstanceOf(AggregateError);
-      expect(e.errors).toEqual([
-        new Error('Failed to process new-insert-2'),
-        new Error('Failed to process new-insert-3'),
-      ]);
+      expect(e.message).toContain('Failed to process new-insert-2');
+      expect(e.message).toContain('Failed to process new-insert-3');
     }
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(1);

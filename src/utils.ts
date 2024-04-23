@@ -2,6 +2,7 @@ import { LoggerInterface } from '@lifeomic/logging';
 import { Context } from 'aws-lambda';
 import pMap from 'p-map';
 import groupBy from 'lodash/groupBy';
+import AggregateError from 'aggregate-error';
 
 export type BaseContext = {
   logger: LoggerInterface;

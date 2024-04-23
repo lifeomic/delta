@@ -337,11 +337,12 @@ describe('SQSMessageHandler', () => {
           {} as any,
         );
       } catch (e: any) {
-        expect(e).toBeInstanceOf(AggregateError);
-        expect(e.errors).toEqual([
-          new Error('Failed to process message test-event-3'),
-          new Error('Failed to process message test-event-7'),
-        ]);
+        expect(e.message).toContain(
+          'Error: Failed to process message test-event-3',
+        );
+        expect(e.message).toContain(
+          'Error: Failed to process message test-event-7',
+        );
       }
     });
 
