@@ -249,7 +249,7 @@ export class DynamoStreamHandler<Entity, Context> {
           concurrency: this.config.concurrency ?? 5,
         },
         async (record) => {
-          const recordLogger = this.config.logger.child({
+          const recordLogger = context.logger.child({
             record: this.obfuscateRecord(record),
           });
           if (!record.dynamodb) {
