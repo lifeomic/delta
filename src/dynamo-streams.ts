@@ -1,14 +1,16 @@
 import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import {
+  Context as AWSContext,
   DynamoDBStreamEvent,
-  DynamoDBStreamHandler,
   DynamoDBRecord,
 } from 'aws-lambda';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import {
   BaseContext,
   BaseHandlerConfig,
+  PartialBatchResponse,
+  handleUnprocessedRecords,
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
@@ -66,13 +68,16 @@ export type DynamoStreamHandlerHarnessConfig<Context> = {
 };
 
 export type DynamoStreamHandlerHarnessContext<Entity> = {
-  sendEvent: (event: TestEvent<Entity>) => Promise<void>;
+  sendEvent: (event: TestEvent<Entity>) => Promise<PartialBatchResponse>;
 };
 
-export type TestRecord<Entity> =
+export type TestRecord<Entity> = {
+  sequenceNumber?: string;
+} & (
   | { type: 'insert'; entity: Entity }
   | { type: 'modify'; oldEntity: Entity; newEntity: Entity }
-  | { type: 'remove'; entity: Entity };
+  | { type: 'remove'; entity: Entity }
+);
 
 export type TestEvent<Entity> = {
   records: TestRecord<Entity>[];
@@ -106,10 +111,8 @@ export class DynamoStreamHandler<Entity, Context> {
     >,
   ): DynamoStreamHandler<Entity, Context> {
     const copy = new DynamoStreamHandler({
-      parse: this.config.parse,
-      logger: overrides.logger ?? this.config.logger,
-      createRunContext:
-        overrides.createRunContext ?? this.config.createRunContext,
+      ...this.config,
+      ...overrides,
     });
 
     for (const action of this.actions.insert) {
@@ -198,7 +201,10 @@ export class DynamoStreamHandler<Entity, Context> {
    * Returns a DynamoDB stream lambda handler that will perform the configured
    * actions.
    */
-  lambda(): DynamoDBStreamHandler {
+  lambda(): (
+    event: DynamoDBStreamEvent,
+    context: AWSContext,
+  ) => Promise<PartialBatchResponse> {
     return withHealthCheckHandling(async (event, ctx) => {
       const correlationId = uuid();
 
@@ -220,7 +226,7 @@ export class DynamoStreamHandler<Entity, Context> {
         'Processing DynamoDB stream event',
       );
 
-      const processingResult = await processWithOrdering(
+      const { unprocessedRecords } = await processWithOrdering(
         {
           items: event.Records,
           orderBy: (record) => {
@@ -314,8 +320,16 @@ export class DynamoStreamHandler<Entity, Context> {
         },
       );
 
-      processingResult.throwOnUnprocessedRecords();
-      context.logger.info('Successfully processed all DynamoDB stream records');
+      return handleUnprocessedRecords({
+        logger: context.logger,
+        unprocessedRecords,
+        usePartialBatchResponses: !!this.config.usePartialBatchResponses,
+        getItemIdentifier: (record) =>
+          // Why ignore: in practice, there are always SequenceNumbers
+          /* istanbul ignore next */
+          record.dynamodb?.SequenceNumber ?? uuid(),
+        redactRecord: (record) => this.obfuscateRecord(record),
+      });
     });
   }
 
@@ -329,7 +343,7 @@ export class DynamoStreamHandler<Entity, Context> {
     const lambda = this.withOverrides(options ?? {}).lambda();
 
     return {
-      sendEvent: async (event) => {
+      sendEvent: (event) => {
         const dynamoEvent: DynamoDBStreamEvent = {
           Records: event.records.map<DynamoDBStreamEvent['Records'][number]>(
             (record) => {
@@ -338,6 +352,7 @@ export class DynamoStreamHandler<Entity, Context> {
                   return {
                     eventName: 'INSERT',
                     dynamodb: {
+                      SequenceNumber: record.sequenceNumber,
                       NewImage: marshall(record.entity) as any,
                     },
                   };
@@ -345,6 +360,7 @@ export class DynamoStreamHandler<Entity, Context> {
                   return {
                     eventName: 'MODIFY',
                     dynamodb: {
+                      SequenceNumber: record.sequenceNumber,
                       OldImage: marshall(record.oldEntity) as any,
                       NewImage: marshall(record.newEntity) as any,
                     },
@@ -353,6 +369,7 @@ export class DynamoStreamHandler<Entity, Context> {
                   return {
                     eventName: 'REMOVE',
                     dynamodb: {
+                      SequenceNumber: record.sequenceNumber,
                       OldImage: marshall(record.entity) as any,
                     },
                   };
@@ -362,7 +379,7 @@ export class DynamoStreamHandler<Entity, Context> {
         };
 
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        await lambda(dynamoEvent, {} as any, null as any);
+        return lambda(dynamoEvent, {} as any);
       },
     };
   }

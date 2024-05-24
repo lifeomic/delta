@@ -4,6 +4,8 @@ import { SQSEvent, Context as AWSContext, SQSRecord } from 'aws-lambda';
 import {
   BaseContext,
   BaseHandlerConfig,
+  PartialBatchResponse,
+  handleUnprocessedRecords,
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
@@ -15,15 +17,6 @@ export type SQSMessageHandlerConfig<Message, Context> =
      * A function for parsing SQS messages into your custom type.
      */
     parseMessage: (body: string) => Message;
-
-    /**
-     * Whether or not to use SQS partial batch responses. If set to true, make
-     * sure to also turn on partial batch responses when configuring your event
-     * source mapping by specifying ReportBatchItemFailures for the
-     * FunctionResponseTypes action. For more details see:
-     * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
-     */
-    usePartialBatchResponses?: boolean;
 
     redactionConfig?: {
       /**
@@ -70,13 +63,7 @@ export type SQSMessageHandlerHarnessOptions<Message, Context> = {
 
 export type SQSMessageHandlerHarnessContext<Message> = {
   /** Sends the specified event through the handler. */
-  sendEvent: (event: { messages: Message[] }) => Promise<void>;
-};
-
-export type SQSPartialBatchResponse = {
-  batchItemFailures: {
-    itemIdentifier: string;
-  }[];
+  sendEvent: (event: { messages: Message[] }) => Promise<PartialBatchResponse>;
 };
 
 const safeRedactor =
@@ -143,7 +130,7 @@ export class SQSMessageHandler<Message, Context> {
   lambda(): (
     event: SQSEvent,
     context: AWSContext,
-  ) => Promise<void | SQSPartialBatchResponse> {
+  ) => Promise<PartialBatchResponse> {
     return withHealthCheckHandling(async (event, awsContext) => {
       // 1. Build the context.
       const correlationId = uuid();
@@ -181,13 +168,14 @@ export class SQSMessageHandler<Message, Context> {
         'Processing SQS topic message',
       );
 
-      const processingResult = await processWithOrdering(
+      const { unprocessedRecords } = await processWithOrdering(
         {
           items: event.Records,
           // If there is not a MessageGroupId, then we don't care about
           // the ordering for the event. We can just generate a UUID for the
           // ordering key.
-          orderBy: (record) => record.attributes.MessageGroupId ?? uuid(),
+          orderBy: (record: SQSRecord) =>
+            record.attributes.MessageGroupId ?? uuid(),
           concurrency: this.config.concurrency ?? 5,
         },
         async (record) => {
@@ -205,49 +193,13 @@ export class SQSMessageHandler<Message, Context> {
         },
       );
 
-      const unprocessedRecordsByGroupIdEntries = Object.entries(
-        processingResult.unprocessedRecordsByGroupId,
-      );
-
-      if (!unprocessedRecordsByGroupIdEntries.length) {
-        context.logger.info('Successfully processed all SQS messages');
-        return;
-      }
-
-      if (!this.config.usePartialBatchResponses) {
-        processingResult.throwOnUnprocessedRecords();
-      }
-
-      // SQS partial batching expects that you return an ordered list of
-      // failures. We map through each group and add them to the batch item
-      // failures in order for each group.
-      const batchItemFailures = unprocessedRecordsByGroupIdEntries
-        .map(([groupId, record]) => {
-          const [failedRecord, ...subsequentUnprocessedRecords] = record.items;
-
-          context.logger.error(
-            {
-              groupId,
-              err: record.error,
-              failedRecord: redactRecord(failedRecord),
-              subsequentUnprocessedRecords:
-                subsequentUnprocessedRecords.map(redactRecord),
-            },
-            'Failed to fully process message group',
-          );
-
-          return record.items.map((item) => ({
-            itemIdentifier: item.messageId,
-          }));
-        })
-        .flat();
-
-      context.logger.info(
-        { batchItemFailures },
-        'Sending SQS partial batch response',
-      );
-
-      return { batchItemFailures };
+      return handleUnprocessedRecords({
+        logger: context.logger,
+        unprocessedRecords,
+        usePartialBatchResponses: !!this.config.usePartialBatchResponses,
+        getItemIdentifier: (record) => record.messageId,
+        redactRecord,
+      });
     });
   }
 
@@ -266,7 +218,7 @@ export class SQSMessageHandler<Message, Context> {
     const lambda = handler.lambda();
 
     return {
-      sendEvent: async ({ messages }) => {
+      sendEvent: ({ messages }) => {
         const event: SQSEvent = {
           Records: messages.map(
             (msg) =>
@@ -280,7 +232,7 @@ export class SQSMessageHandler<Message, Context> {
           ),
         };
 
-        await lambda(
+        return lambda(
           event,
           // We don't need to mock every field on the context -- there are lots.
           // eslint-disable-next-line @typescript-eslint/no-unsafe-argument

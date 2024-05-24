@@ -4,6 +4,8 @@ import { KinesisStreamEvent, Context as AWSContext } from 'aws-lambda';
 import {
   BaseContext,
   BaseHandlerConfig,
+  PartialBatchResponse,
+  handleUnprocessedRecords,
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
@@ -39,7 +41,7 @@ export type KinesisEventHandlerHarnessOptions<Event, Context> = {
 
 export type KinesisEventHandlerHarnessContext<Event> = {
   /** Sends the specified event through the handler. */
-  sendEvent: (event: { events: Event[] }) => Promise<void>;
+  sendEvent: (event: { events: Event[] }) => Promise<PartialBatchResponse>;
 };
 
 /**
@@ -62,7 +64,10 @@ export class KinesisEventHandler<Event, Context> {
     return this;
   }
 
-  lambda(): (event: KinesisStreamEvent, context: AWSContext) => Promise<void> {
+  lambda(): (
+    event: KinesisStreamEvent,
+    context: AWSContext,
+  ) => Promise<PartialBatchResponse> {
     return withHealthCheckHandling(async (event, awsContext) => {
       // 1. Build the context.
       const correlationId = uuid();
@@ -77,7 +82,7 @@ export class KinesisEventHandler<Event, Context> {
       Object.assign(context, await this.config.createRunContext(context));
 
       // 2. Process all the records.
-      const processingResult = await processWithOrdering(
+      const { unprocessedRecords } = await processWithOrdering(
         {
           items: event.Records,
           orderBy: (record) => record.kinesis.partitionKey,
@@ -100,8 +105,13 @@ export class KinesisEventHandler<Event, Context> {
         },
       );
 
-      processingResult.throwOnUnprocessedRecords();
-      context.logger.info('Successfully processed all Kinesis records');
+      // 3. Handle unprocessed records, if need be.
+      return handleUnprocessedRecords({
+        logger: context.logger,
+        unprocessedRecords,
+        usePartialBatchResponses: !!this.config.usePartialBatchResponses,
+        getItemIdentifier: (record) => record.kinesis.sequenceNumber,
+      });
     });
   }
 
@@ -120,7 +130,7 @@ export class KinesisEventHandler<Event, Context> {
     const lambda = handler.lambda();
 
     return {
-      sendEvent: async ({ events }) => {
+      sendEvent: ({ events }) => {
         const event: KinesisStreamEvent = {
           // @ts-expect-error We don't need to mock every field on this event -- there are lots.
           Records: events.map((e) => ({
@@ -132,7 +142,7 @@ export class KinesisEventHandler<Event, Context> {
           })),
         };
 
-        await lambda(
+        return lambda(
           event,
           // We don't need to mock every field on the context -- there are lots.
           // eslint-disable-next-line @typescript-eslint/no-unsafe-argument

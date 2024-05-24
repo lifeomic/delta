@@ -4,11 +4,13 @@ import { KinesisEventHandler } from './kinesis';
 
 const logger: jest.Mocked<LoggerInterface> = {
   info: jest.fn(),
+  error: jest.fn(),
   child: jest.fn(),
 } as any;
 
 beforeEach(() => {
   logger.info.mockReset();
+  logger.error.mockReset();
   logger.child.mockReset();
   logger.child.mockImplementation(() => logger);
 });
@@ -472,6 +474,122 @@ describe('KinesisEventHandler', () => {
 
       expect(eventOther2StartedTime).toBeGreaterThanOrEqual(
         eventOther1FinishedTime,
+      );
+    });
+  });
+
+  describe('partial batch responses', () => {
+    test('returns partial batch response when setting is enabled', async () => {
+      const execute = new KinesisEventHandler({
+        logger,
+        parseEvent: testSerializer.parseEvent,
+        createRunContext: () => ({}),
+        usePartialBatchResponses: true,
+        // Make sure partial batch responses are returned in order even
+        // when using concurrency.
+        concurrency: 2,
+      })
+        .onEvent((ctx, event) => {
+          // let 2 pass
+          if (event.id.includes('2')) {
+            return;
+          }
+          throw new Error('Failed to process event: ' + event.id);
+        })
+        .lambda();
+
+      const result = await execute(
+        {
+          Records: [
+            {
+              // @ts-expect-error We're specifying a subset of props here.
+              kinesis: {
+                sequenceNumber: 'one',
+                partitionKey: uuid(),
+                data: Buffer.from(JSON.stringify({ id: 'event-1' })).toString(
+                  'base64',
+                ),
+              },
+            },
+            {
+              // @ts-expect-error We're specifying a subset of props here.
+              kinesis: {
+                sequenceNumber: 'two',
+                partitionKey: uuid(),
+                data: Buffer.from(JSON.stringify({ id: 'event-2' })).toString(
+                  'base64',
+                ),
+              },
+            },
+            {
+              // @ts-expect-error We're specifying a subset of props here.
+              kinesis: {
+                sequenceNumber: 'three',
+                partitionKey: uuid(),
+                data: Buffer.from(JSON.stringify({ id: 'event-3' })).toString(
+                  'base64',
+                ),
+              },
+            },
+          ],
+        },
+        { awsRequestId: uuid() },
+      );
+
+      // Expect that first event is logged
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identifier: 'one',
+          failedRecord: {
+            kinesis: {
+              sequenceNumber: 'one',
+              partitionKey: expect.any(String),
+              data: Buffer.from(JSON.stringify({ id: 'event-1' })).toString(
+                'base64',
+              ),
+            },
+          },
+          err: expect.objectContaining({
+            message: 'Failed to process event: event-1',
+          }),
+        }),
+        'Failed to process record',
+      );
+
+      // Expect that third event is logged
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identifier: 'three',
+          failedRecord: {
+            kinesis: {
+              sequenceNumber: 'three',
+              partitionKey: expect.any(String),
+              data: Buffer.from(JSON.stringify({ id: 'event-3' })).toString(
+                'base64',
+              ),
+            },
+          },
+          err: expect.objectContaining({
+            message: 'Failed to process event: event-3',
+          }),
+        }),
+        'Failed to process record',
+      );
+
+      const batchItemFailures = [
+        { itemIdentifier: 'one' },
+        { itemIdentifier: 'three' },
+      ];
+
+      expect(result).toEqual({
+        batchItemFailures,
+      });
+      expect(logger.info).not.toHaveBeenCalledWith(
+        'Successfully processed all messages',
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        { batchItemFailures },
+        'Completing with partial batch response',
       );
     });
   });

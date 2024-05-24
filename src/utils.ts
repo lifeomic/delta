@@ -25,6 +25,15 @@ export type BaseHandlerConfig<Context> = {
    * @default 5
    */
   concurrency?: number;
+
+  /**
+   * Whether or not to use partial batch responses. If set to true, make
+   * sure to also turn on partial batch responses when configuring your event
+   * source mapping by specifying ReportBatchItemFailures for the
+   * FunctionResponseTypes action. For more details see:
+   * https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html#services-sqs-batchfailurereporting
+   */
+  usePartialBatchResponses?: boolean;
 };
 
 export const withHealthCheckHandling =
@@ -46,6 +55,10 @@ export const withHealthCheckHandling =
     return handler(event, context);
   };
 
+export type PartialBatchResponse =
+  | { batchItemFailures: { itemIdentifier: string }[] }
+  | undefined;
+
 export type ProcessWithOrderingParams<T> = {
   /**
    * The list of items to process.
@@ -60,6 +73,10 @@ export type ProcessWithOrderingParams<T> = {
    * The limit on the number of items to process concurrently at any time.
    */
   concurrency: number;
+};
+
+export type ProcessWithOrderingReturn<T> = {
+  unprocessedRecords: { item: T; error?: any }[];
 };
 
 /**
@@ -89,52 +106,91 @@ export type ProcessWithOrderingParams<T> = {
 export const processWithOrdering = async <T>(
   params: ProcessWithOrderingParams<T>,
   process: (item: T) => Promise<void>,
-) => {
+): Promise<ProcessWithOrderingReturn<T>> => {
   const groupedItems = groupBy(params.items, params.orderBy);
-  const groupIds = Object.keys(groupedItems);
   const groups = Object.values(groupedItems);
-  const unprocessedRecordsByGroupId: Record<
-    string,
-    {
-      error: any;
-      items: T[];
-    }
-  > = {};
+  const unsortedUnprocessedRecords: { item: T; error?: any }[] = [];
 
   await pMap(
     groups,
-    async (group, groupIndex) => {
+    async (group) => {
       for (let i = 0; i < group.length; i++) {
         const item = group[i];
 
         try {
           await process(item);
         } catch (error) {
-          // Keep track of all unprocessed items and stop processing the current
-          // group as soon as we encounter the first error.
-          unprocessedRecordsByGroupId[groupIds[groupIndex]] = {
-            error,
-            items: group.slice(i),
-          };
+          // Track the error on this item.
+          unsortedUnprocessedRecords.push({ item, error });
+          // Also, track any subsequent items in this group.
+          unsortedUnprocessedRecords.push(
+            ...group.slice(i + 1).map((item) => ({ item })),
+          );
           return;
         }
       }
     },
-    {
-      concurrency: params.concurrency,
-    },
+    { concurrency: params.concurrency },
   );
 
-  return {
-    unprocessedRecordsByGroupId,
-    throwOnUnprocessedRecords: () => {
-      const aggregateErrors = Object.values(unprocessedRecordsByGroupId).map(
-        (record) => record.error,
-      );
+  // Since unprocessed records can get tracked out-of-order, re-order
+  // them according to the original order.
+  const sortedUnprocessedRecords: { item: T; error?: any }[] = [];
 
-      if (aggregateErrors.length) {
-        throw new AggregateError(aggregateErrors);
-      }
-    },
-  };
+  for (const item of params.items) {
+    const unprocessed = unsortedUnprocessedRecords.find((i) => i.item === item);
+    if (unprocessed) {
+      sortedUnprocessedRecords.push(unprocessed);
+    }
+  }
+
+  return { unprocessedRecords: sortedUnprocessedRecords };
+};
+
+export type HandleUnprocessedRecordsReturn =
+  | { batchItemFailures: { itemIdentifier: string }[] }
+  | undefined;
+
+export const handleUnprocessedRecords = <Record>(params: {
+  logger: LoggerInterface;
+  unprocessedRecords: ProcessWithOrderingReturn<Record>['unprocessedRecords'];
+  usePartialBatchResponses: boolean;
+  getItemIdentifier: (record: Record) => string;
+  redactRecord?: (record: Record) => any;
+}): HandleUnprocessedRecordsReturn => {
+  if (params.unprocessedRecords.length === 0) {
+    params.logger.info('Successfully processed all records');
+    return;
+  }
+
+  if (!params.usePartialBatchResponses) {
+    throw new AggregateError(
+      params.unprocessedRecords.filter((i) => 'error' in i).map((e) => e.error),
+    );
+  }
+
+  // Log all the failures.
+  for (const { item, error } of params.unprocessedRecords) {
+    if (error) {
+      params.logger.error(
+        {
+          err: error,
+          identifier: params.getItemIdentifier(item),
+          failedRecord: params.redactRecord ? params.redactRecord(item) : item,
+        },
+        'Failed to process record',
+      );
+    }
+  }
+
+  const batchItemFailures = params.unprocessedRecords.map(({ item }) => ({
+    itemIdentifier: params.getItemIdentifier(item),
+  }));
+
+  params.logger.info(
+    { batchItemFailures },
+    'Completing with partial batch response',
+  );
+
+  return { batchItemFailures };
 };
