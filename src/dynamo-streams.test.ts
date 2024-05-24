@@ -46,11 +46,7 @@ describe('DynamoStreamHandler', () => {
       createRunContext: () => ({}),
     }).lambda();
 
-    const result = await lambda(
-      { httpMethod: 'GET' } as any,
-      {} as any,
-      {} as any,
-    );
+    const result = await lambda({ httpMethod: 'GET' } as any, {} as any);
 
     expect(result).toStrictEqual({
       statusCode: 200,
@@ -65,11 +61,7 @@ describe('DynamoStreamHandler', () => {
       createRunContext: () => ({}),
     }).lambda();
 
-    const result = await lambda(
-      { healthCheck: true } as any,
-      {} as any,
-      {} as any,
-    );
+    const result = await lambda({ healthCheck: true } as any, {} as any);
 
     expect(result).toStrictEqual({
       healthy: true,
@@ -111,7 +103,6 @@ describe('DynamoStreamHandler', () => {
           ],
         },
         {} as any,
-        {} as any,
       );
     } catch (e: any) {
       expect(e.message).toContain('Failed to process new-insert-2');
@@ -145,7 +136,6 @@ describe('DynamoStreamHandler', () => {
         ],
       },
       {} as any,
-      {} as any,
     );
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
@@ -178,7 +168,6 @@ describe('DynamoStreamHandler', () => {
         ],
       },
       {} as any,
-      {} as any,
     );
 
     expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
@@ -210,7 +199,6 @@ describe('DynamoStreamHandler', () => {
           },
         ],
       },
-      {} as any,
       {} as any,
     );
 
@@ -272,7 +260,6 @@ describe('DynamoStreamHandler', () => {
           },
         ],
       },
-      {} as any,
       {} as any,
     );
 
@@ -489,11 +476,7 @@ describe('DynamoStreamHandler', () => {
     }).lambda();
 
     test('no dynamodb property', async () => {
-      await lambda(
-        { Records: [{ eventName: 'INSERT' }] },
-        {} as any,
-        {} as any,
-      );
+      await lambda({ Records: [{ eventName: 'INSERT' }] }, {} as any);
 
       expect(logger.error).toHaveBeenCalledWith(
         'The dynamodb property was not present on event',
@@ -503,7 +486,6 @@ describe('DynamoStreamHandler', () => {
     test('INSERT with no NewImage', async () => {
       await lambda(
         { Records: [{ eventName: 'INSERT', dynamodb: {} }] },
-        {} as any,
         {} as any,
       );
 
@@ -522,7 +504,6 @@ describe('DynamoStreamHandler', () => {
             },
           ],
         },
-        {} as any,
         {} as any,
       );
 
@@ -550,7 +531,6 @@ describe('DynamoStreamHandler', () => {
           ],
         },
         {} as any,
-        {} as any,
       );
 
       expect(logger.error).toHaveBeenCalledWith(
@@ -569,7 +549,6 @@ describe('DynamoStreamHandler', () => {
     test('REMOVE with no OldImage', async () => {
       await lambda(
         { Records: [{ eventName: 'REMOVE', dynamodb: {} }] },
-        {} as any,
         {} as any,
       );
 
@@ -674,7 +653,6 @@ describe('DynamoStreamHandler', () => {
           ],
         },
         {} as any,
-        null as any,
       );
 
       const end = Date.now();
@@ -792,7 +770,6 @@ describe('DynamoStreamHandler', () => {
           ],
         },
         {} as any,
-        null as any,
       );
 
       const end = Date.now();
@@ -825,7 +802,6 @@ describe('DynamoStreamHandler', () => {
             },
           ],
         },
-        {} as any,
         {} as any,
       );
 
@@ -875,13 +851,110 @@ describe('DynamoStreamHandler', () => {
           ],
         },
         {} as any,
-        {} as any,
       );
 
       expect(dataSources.doSomething).toHaveBeenCalledTimes(1);
       expect(dataSources.doSomething).toHaveBeenCalledWith(
         { id: 'old-modify', otherValue: 'secret data' },
         { id: 'new-modify', otherMap: { name: 'secret data', age: 35 } },
+      );
+    });
+  });
+
+  describe('partial batch responses', () => {
+    test('returns partial batch response when setting is enabled', async () => {
+      const { sendEvent } = new DynamoStreamHandler({
+        logger,
+        loggerObfuscateImageKeys: ['otherMap', 'otherValue'],
+        parse: testSerializer.parse,
+        createRunContext: () => ({ logger, dataSources }),
+        usePartialBatchResponses: true,
+        // Make sure partial batch responses are returned in order even
+        // when using concurrency.
+        concurrency: 2,
+      })
+        .onInsert((ctx, entity) => {
+          // let 2 pass
+          if (entity.id.includes('2')) {
+            return;
+          }
+          throw new Error('Failed to process insert: ' + entity.id);
+        })
+        .harness();
+
+      const result = await sendEvent({
+        records: [
+          {
+            sequenceNumber: 'one',
+            type: 'insert',
+            entity: { id: 'entity-1', otherValue: 'other' },
+          },
+          {
+            sequenceNumber: 'two',
+            type: 'insert',
+            entity: { id: 'entity-2' },
+          },
+          {
+            sequenceNumber: 'three',
+            type: 'insert',
+            entity: { id: 'entity-3' },
+          },
+        ],
+      });
+
+      // Expect that redaction is working
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identifier: 'one',
+          failedRecord: {
+            eventName: 'INSERT',
+            dynamodb: {
+              SequenceNumber: 'one',
+              NewImage: {
+                id: { S: 'entity-1' },
+                otherValue: { S: 'obfuscated' },
+              },
+            },
+          },
+          err: expect.objectContaining({
+            message: 'Failed to process insert: entity-1',
+          }),
+        }),
+        'Failed to process record',
+      );
+
+      // expect that third event is logged
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          identifier: 'three',
+          failedRecord: {
+            eventName: 'INSERT',
+            dynamodb: {
+              SequenceNumber: 'three',
+              NewImage: { id: { S: 'entity-3' } },
+            },
+          },
+          err: expect.objectContaining({
+            message: 'Failed to process insert: entity-3',
+          }),
+        }),
+        'Failed to process record',
+      );
+
+      const batchItemFailures = [
+        { itemIdentifier: 'one' },
+        { itemIdentifier: 'three' },
+      ];
+
+      expect(result).toEqual({
+        batchItemFailures,
+      });
+      expect(logger.info).not.toHaveBeenCalledWith(
+        'Successfully processed all messages',
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        { batchItemFailures },
+        'Completing with partial batch response',
       );
     });
   });

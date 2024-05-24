@@ -371,39 +371,33 @@ describe('SQSMessageHandler', () => {
       // First failure group, expecting message bodies
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
+          identifier: 'message-3',
           failedRecord: expect.objectContaining({
             body: JSON.stringify({
               name: `test-event-3`,
             }),
           }),
-          subsequentUnprocessedRecords: [
-            expect.objectContaining({
-              body: JSON.stringify({
-                name: `test-event-4`,
-              }),
-            }),
-          ],
+          err: expect.objectContaining({
+            message: 'Failed to process message test-event-3',
+          }),
         }),
-        'Failed to fully process message group',
+        'Failed to process record',
       );
 
       // Second failure group, expecting message bodies
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
+          identifier: 'message-7',
           failedRecord: expect.objectContaining({
             body: JSON.stringify({
               name: `test-event-7`,
             }),
           }),
-          subsequentUnprocessedRecords: [
-            expect.objectContaining({
-              body: JSON.stringify({
-                name: `test-event-8`,
-              }),
-            }),
-          ],
+          err: expect.objectContaining({
+            message: 'Failed to process message test-event-7',
+          }),
         }),
-        'Failed to fully process message group',
+        'Failed to process record',
       );
 
       const batchItemFailures = [
@@ -417,13 +411,13 @@ describe('SQSMessageHandler', () => {
         batchItemFailures,
       });
       expect(logger.info).not.toHaveBeenCalledWith(
-        'Successfully processed all SQS messages',
+        'Successfully processed all messages',
       );
       expect(logger.info).toHaveBeenCalledWith(
         {
           batchItemFailures,
         },
-        'Sending SQS partial batch response',
+        'Completing with partial batch response',
       );
     });
 
@@ -453,7 +447,7 @@ describe('SQSMessageHandler', () => {
         'Failed to fully process message group',
       );
       expect(logger.info).toHaveBeenCalledWith(
-        'Successfully processed all SQS messages',
+        'Successfully processed all records',
       );
       expect(logger.info).not.toHaveBeenCalledWith(
         {
@@ -493,35 +487,31 @@ describe('SQSMessageHandler', () => {
       // First failure group, expecting message bodies are redacted
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
+          identifier: 'message-3',
           failedRecord: expect.objectContaining({
             body: 'REDACTED',
             messageId: 'message-3',
           }),
-          subsequentUnprocessedRecords: [
-            expect.objectContaining({
-              body: 'REDACTED',
-              messageId: 'message-4',
-            }),
-          ],
+          err: expect.objectContaining({
+            message: 'Failed to process message test-event-3',
+          }),
         }),
-        'Failed to fully process message group',
+        'Failed to process record',
       );
 
       // Second failure group, expecting message bodies are redacted
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
+          identifier: 'message-7',
           failedRecord: expect.objectContaining({
             body: 'REDACTED',
             messageId: 'message-7',
           }),
-          subsequentUnprocessedRecords: [
-            expect.objectContaining({
-              body: 'REDACTED',
-              messageId: 'message-8',
-            }),
-          ],
+          err: expect.objectContaining({
+            message: 'Failed to process message test-event-7',
+          }),
         }),
-        'Failed to fully process message group',
+        'Failed to process record',
       );
     });
   });
