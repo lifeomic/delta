@@ -260,3 +260,34 @@ processed in parallel.
 that do _not_ need to be ordered will not necessarily be processed in the same
 order they were received in the batch (even when using a `concurrency` value of
 `1`).
+
+### Partial Batch Responses
+
+All of the handlers in `@lifeomic/delta` support returning [partial batch responses](https://docs.aws.amazon.com/prescriptive-guidance/latest/lambda-event-filtering-partial-batch-responses-for-sqs/best-practices-partial-batch-responses.html). This behavior can be enabled
+by specifying the `usePartialBatchResponses` configuration option:
+
+```typescript
+// Dynamo
+const stream = new DynamoStreamHandler({
+  // ...
+  usePartialBatchResponses: true,
+});
+
+// Kinesis
+const stream = new KinesisEventHandler({
+  // ...
+  usePartialBatchResponses: true,
+});
+
+// SQS
+const stream = new SQSMessageHandler({
+  // ...
+  usePartialBatchResponses: true,
+});
+```
+
+When `usePartialBatchResponses` is enabled, the handler will return a set of
+`batchItemFailures`. If events are ordered, ordering is preserved correctly.
+
+**Note**: When enabling this option, be sure to _also_ configure the correct
+[`FunctionResponseTypes`](https://docs.aws.amazon.com/lambda/latest/api/API_CreateEventSourceMapping.html#lambda-CreateEventSourceMapping-request-FunctionResponseTypes) in your Lambda event source mapping.
