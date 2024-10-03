@@ -905,7 +905,7 @@ describe('DynamoStreamHandler', () => {
       // Expect that redaction is working
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'one',
+          itemIdentifier: 'one',
           failedRecord: {
             eventName: 'INSERT',
             dynamodb: {
@@ -926,7 +926,7 @@ describe('DynamoStreamHandler', () => {
       // expect that third event is logged
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'three',
+          itemIdentifier: 'three',
           failedRecord: {
             eventName: 'INSERT',
             dynamodb: {

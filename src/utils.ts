@@ -163,29 +163,32 @@ export const handleUnprocessedRecords = <Record>(params: {
     return;
   }
 
-  if (!params.usePartialBatchResponses) {
-    throw new AggregateError(
-      params.unprocessedRecords.filter((i) => 'error' in i).map((e) => e.error),
-    );
-  }
-
-  // Log all the failures.
+  const batchItemFailures: { itemIdentifier: string }[] = [];
+  const errors: any[] = [];
+  // Even when not using partial batch responses, we still want to log all
+  // the errors before throwing so we can easily correlate errors by the
+  // logger correlation ID, request ID, and event ID.
   for (const { item, error } of params.unprocessedRecords) {
+    const itemIdentifier = params.getItemIdentifier(item);
+    batchItemFailures.push({ itemIdentifier });
+
     if (error) {
+      errors.push(error);
       params.logger.error(
         {
           err: error,
-          identifier: params.getItemIdentifier(item),
+          itemIdentifier,
           failedRecord: params.redactRecord ? params.redactRecord(item) : item,
+          usePartialBatchResponses: params.usePartialBatchResponses,
         },
         'Failed to process record',
       );
     }
   }
 
-  const batchItemFailures = params.unprocessedRecords.map(({ item }) => ({
-    itemIdentifier: params.getItemIdentifier(item),
-  }));
+  if (!params.usePartialBatchResponses) {
+    throw new AggregateError(errors);
+  }
 
   params.logger.info(
     { batchItemFailures },
