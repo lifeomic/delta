@@ -539,7 +539,7 @@ describe('KinesisEventHandler', () => {
       // Expect that first event is logged
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'one',
+          itemIdentifier: 'one',
           failedRecord: {
             kinesis: {
               sequenceNumber: 'one',
@@ -559,7 +559,7 @@ describe('KinesisEventHandler', () => {
       // Expect that third event is logged
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'three',
+          itemIdentifier: 'three',
           failedRecord: {
             kinesis: {
               sequenceNumber: 'three',

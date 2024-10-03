@@ -371,7 +371,7 @@ describe('SQSMessageHandler', () => {
       // First failure group, expecting message bodies
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'message-3',
+          itemIdentifier: 'message-3',
           failedRecord: expect.objectContaining({
             body: JSON.stringify({
               name: `test-event-3`,
@@ -387,7 +387,7 @@ describe('SQSMessageHandler', () => {
       // Second failure group, expecting message bodies
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'message-7',
+          itemIdentifier: 'message-7',
           failedRecord: expect.objectContaining({
             body: JSON.stringify({
               name: `test-event-7`,
@@ -487,7 +487,7 @@ describe('SQSMessageHandler', () => {
       // First failure group, expecting message bodies are redacted
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'message-3',
+          itemIdentifier: 'message-3',
           failedRecord: expect.objectContaining({
             body: 'REDACTED',
             messageId: 'message-3',
@@ -502,7 +502,7 @@ describe('SQSMessageHandler', () => {
       // Second failure group, expecting message bodies are redacted
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          identifier: 'message-7',
+          itemIdentifier: 'message-7',
           failedRecord: expect.objectContaining({
             body: 'REDACTED',
             messageId: 'message-7',
