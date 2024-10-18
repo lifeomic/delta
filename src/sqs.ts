@@ -37,6 +37,13 @@ export type SQSMessageHandlerConfig<Message, Context> =
        */
       publicKeyDescription: string;
     };
+
+    /**
+     * Whether to ignore messages that fail to parse. If set to true,
+     * throwing in the custom parsing function will cause the message
+     * to be ignored, and never processed.
+     */
+    ignoreUnparseableMessages?: boolean;
   };
 
 export type SQSMessageAction<Message, Context> = (
@@ -183,8 +190,19 @@ export class SQSMessageHandler<Message, Context> {
             messageId: record.messageId,
           });
 
-          const parsedMessage = this.config.parseMessage(record.body);
-
+          let parsedMessage: Message;
+          try {
+            parsedMessage = this.config.parseMessage(record.body);
+          } catch (err) {
+            messageLogger.error({ err }, 'Failed to parse message');
+            if (this.config.ignoreUnparseableMessages) {
+              messageLogger.warn(
+                'ignoreUnparseableMessages is set to true. Ignoring message.',
+              );
+              return;
+            }
+            throw err;
+          }
           for (const action of this.messageActions) {
             await action({ ...context, logger: messageLogger }, parsedMessage);
           }

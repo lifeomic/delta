@@ -6,11 +6,13 @@ const logger: jest.Mocked<LoggerInterface> = {
   info: jest.fn(),
   error: jest.fn(),
   child: jest.fn(),
+  warn: jest.fn(),
 } as any;
 
 beforeEach(() => {
   logger.info.mockReset();
   logger.error.mockReset();
+  logger.warn.mockReset();
   logger.child.mockReset();
   logger.child.mockImplementation(() => logger);
 });
@@ -592,5 +594,93 @@ describe('KinesisEventHandler', () => {
         'Completing with partial batch response',
       );
     });
+  });
+
+  test('throws when encountering an unparseable message', async () => {
+    const lambda = new KinesisEventHandler({
+      logger,
+      parseEvent: testSerializer.parseEvent,
+      createRunContext: () => ({}),
+    }).lambda();
+
+    await expect(
+      lambda(
+        {
+          Records: [
+            {
+              kinesis: {
+                partitionKey: uuid(),
+                data: Buffer.from('not-a-json-string', 'utf-8').toString(
+                  'base64',
+                ),
+              },
+            },
+          ] as any,
+        },
+        {} as any,
+      ),
+    ).rejects.toThrow('Unexpected token o in JSON at position 1');
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({
+          message: 'Unexpected token o in JSON at position 1',
+        }),
+      }),
+      'Failed to parse event',
+    );
+  });
+
+  test('respects ignoreUnparseableEvents', async () => {
+    const processor = jest.fn();
+    const lambda = new KinesisEventHandler({
+      logger,
+      parseEvent: testSerializer.parseEvent,
+      createRunContext: () => ({}),
+      ignoreUnparseableEvents: true,
+    })
+      .onEvent((ctx, event) => processor(event))
+      .lambda();
+
+    await lambda(
+      {
+        Records: [
+          {
+            kinesis: {
+              partitionKey: uuid(),
+              data: Buffer.from('not-a-json-string', 'utf-8').toString(
+                'base64',
+              ),
+            },
+          },
+          {
+            kinesis: {
+              partitionKey: uuid(),
+              data: Buffer.from(
+                JSON.stringify({ message: 'test-message' }),
+                'utf-8',
+              ).toString('base64'),
+            },
+          },
+        ] as any,
+      },
+      {} as any,
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({
+          message: 'Unexpected token o in JSON at position 1',
+        }),
+      }),
+      'Failed to parse event',
+    );
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'ignoreUnparseableEvents is set to true. Ignoring message.',
+    );
+
+    expect(processor).toHaveBeenCalledTimes(1);
+    expect(processor).toHaveBeenCalledWith({ message: 'test-message' });
   });
 });

@@ -16,6 +16,13 @@ export type KinesisEventHandlerConfig<Event, Context> =
      * A function for parsing the Kinesis event data into your custom type.
      */
     parseEvent: (body: string) => Event;
+
+    /**
+     * Whether to ignore events that fail to parse. If set to true,
+     * throwing in the custom parsing function will cause the event
+     * to be ignored, and never processed.
+     */
+    ignoreUnparseableEvents?: boolean;
   };
 
 export type KinesisEventAction<Event, Context> = (
@@ -93,9 +100,21 @@ export class KinesisEventHandler<Event, Context> {
             eventId: record.eventID,
           });
 
-          const parsedEvent = this.config.parseEvent(
-            Buffer.from(record.kinesis.data, 'base64').toString('utf8'),
-          );
+          let parsedEvent: Event;
+          try {
+            parsedEvent = this.config.parseEvent(
+              Buffer.from(record.kinesis.data, 'base64').toString('utf8'),
+            );
+          } catch (err) {
+            eventLogger.error({ err }, 'Failed to parse event');
+            if (this.config.ignoreUnparseableEvents) {
+              eventLogger.warn(
+                'ignoreUnparseableEvents is set to true. Ignoring message.',
+              );
+              return;
+            }
+            throw err;
+          }
 
           for (const action of this.actions) {
             await action({ ...context, logger: eventLogger }, parsedEvent);

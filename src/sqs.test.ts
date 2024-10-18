@@ -8,6 +8,7 @@ const logger: jest.Mocked<LoggerInterface> = {
   info: jest.fn(),
   error: jest.fn(),
   child: jest.fn(),
+  warn: jest.fn(),
 } as any;
 
 let publicKey: string;
@@ -21,6 +22,7 @@ beforeAll(async () => {
 beforeEach(() => {
   logger.info.mockReset();
   logger.error.mockReset();
+  logger.warn.mockReset();
   logger.child.mockReset();
   logger.child.mockImplementation(() => logger);
 });
@@ -791,5 +793,67 @@ describe('SQSMessageHandler', () => {
         eventOther1FinishedTime,
       );
     });
+  });
+
+  test('throws when encountering an unparseable message', async () => {
+    const lambda = new SQSMessageHandler({
+      logger,
+      parseMessage: testSerializer.parseMessage,
+      createRunContext: () => ({}),
+    }).lambda();
+
+    await expect(
+      lambda(
+        { Records: [{ attributes: {}, body: 'not-a-json-string' }] } as any,
+        {} as any,
+      ),
+    ).rejects.toThrow('Unexpected token o in JSON at position 1');
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({
+          message: 'Unexpected token o in JSON at position 1',
+        }),
+      }),
+      'Failed to parse message',
+    );
+  });
+
+  test('respects ignoreUnparseableMessages', async () => {
+    const processor = jest.fn().mockResolvedValue(void 0);
+    const lambda = new SQSMessageHandler({
+      logger,
+      parseMessage: testSerializer.parseMessage,
+      createRunContext: () => ({}),
+      ignoreUnparseableMessages: true,
+    })
+      .onMessage((ctx, message) => processor(message))
+      .lambda();
+
+    await lambda(
+      {
+        Records: [
+          { attributes: {}, body: 'not-a-json-string' },
+          { attributes: {}, body: JSON.stringify({ message: 'test-message' }) },
+        ],
+      } as any,
+      {} as any,
+    );
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({
+          message: 'Unexpected token o in JSON at position 1',
+        }),
+      }),
+      'Failed to parse message',
+    );
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'ignoreUnparseableMessages is set to true. Ignoring message.',
+    );
+
+    expect(processor).toHaveBeenCalledTimes(1);
+    expect(processor).toHaveBeenCalledWith({ message: 'test-message' });
   });
 });
