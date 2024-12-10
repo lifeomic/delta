@@ -1,4 +1,3 @@
-import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import {
   Context as AWSContext,
@@ -6,6 +5,7 @@ import {
   DynamoDBRecord,
 } from 'aws-lambda';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import bunyan from 'bunyan';
 import {
   BaseContext,
   BaseHandlerConfig,
@@ -14,6 +14,7 @@ import {
   processWithOrdering,
   withHealthCheckHandling,
 } from './utils';
+import { LoggerInterface } from './logging';
 
 export type DynamoStreamHandlerConfig<Entity, Context> =
   BaseHandlerConfig<Context> & {
@@ -207,10 +208,14 @@ export class DynamoStreamHandler<Entity, Context> {
   ) => Promise<PartialBatchResponse> {
     return withHealthCheckHandling(async (event, ctx) => {
       const correlationId = uuid();
+      /* istanbul ignore next */
+      const logger =
+        this.config.logger ??
+        bunyan.createLogger({ name: 'DynamoStreamHandler' });
 
       const base: BaseContext = {
         correlationId,
-        logger: this.config.logger.child({
+        logger: logger.child({
           requestID: ctx.awsRequestId,
           correlationId,
         }),

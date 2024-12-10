@@ -1,5 +1,4 @@
 import { v4 as uuid } from 'uuid';
-import type { LoggerInterface } from '@lifeomic/logging';
 import type {
   DynamoStreamHandler,
   DynamoStreamHandlerHarnessConfig,
@@ -11,6 +10,7 @@ import {
   SQSMessageHandlerHarnessContext,
   SQSMessageHandlerHarnessOptions,
 } from './sqs';
+import { LoggerInterface } from './logging';
 
 /**
  * Returns a mock logger for use with assertions in a Jest environment.
@@ -55,7 +55,7 @@ export const useMockLogger = () => {
     logger.error.mockReset();
     logger.fatal.mockReset();
     logger.child.mockReset();
-    logger.child.mockImplementation(() => logger);
+    logger.child.mockImplementation(() => logger as any);
   });
 
   return logger;

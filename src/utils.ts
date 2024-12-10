@@ -1,8 +1,8 @@
-import { LoggerInterface } from '@lifeomic/logging';
 import { Context } from 'aws-lambda';
 import pMap from 'p-map';
 import groupBy from 'lodash/groupBy';
 import AggregateError from 'aggregate-error';
+import { LoggerInterface } from './logging';
 
 export type BaseContext = {
   logger: LoggerInterface;
@@ -11,9 +11,9 @@ export type BaseContext = {
 
 export type BaseHandlerConfig<Context> = {
   /**
-   * A logger to use in the context.
+   * An optional logger to use in the context.
    */
-  logger: LoggerInterface;
+  logger?: LoggerInterface;
   /**
    * Create a "context" for the lambda execution. (e.g. "data sources")
    */

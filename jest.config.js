@@ -2,6 +2,7 @@ module.exports = {
   preset: '@lifeomic/jest-config',
   testMatch: ['<rootDir>/**/*.test.ts'],
   collectCoverage: true,
+  coveragePathIgnorePatterns: ['./src/jest-utils.ts'],
   coverageThreshold: {
     global: {
       branches: 100,

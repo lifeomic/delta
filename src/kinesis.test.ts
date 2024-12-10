@@ -1,21 +1,9 @@
 import { v4 as uuid } from 'uuid';
-import { LoggerInterface } from '@lifeomic/logging';
+
 import { KinesisEventHandler } from './kinesis';
+import { useMockLogger } from './jest-utils';
 
-const logger: jest.Mocked<LoggerInterface> = {
-  info: jest.fn(),
-  error: jest.fn(),
-  child: jest.fn(),
-  warn: jest.fn(),
-} as any;
-
-beforeEach(() => {
-  logger.info.mockReset();
-  logger.error.mockReset();
-  logger.warn.mockReset();
-  logger.child.mockReset();
-  logger.child.mockImplementation(() => logger);
-});
+const logger = useMockLogger();
 
 const testSerializer = {
   parseEvent: (msg: string) => JSON.parse(msg),

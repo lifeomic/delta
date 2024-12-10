@@ -1,8 +1,9 @@
-import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
-import { DynamoStreamHandler } from './dynamo-streams';
 import { marshall } from '@aws-sdk/util-dynamodb';
 import { z } from 'zod';
+
+import { DynamoStreamHandler } from './dynamo-streams';
+import { useMockLogger } from './jest-utils';
 
 const TestSchema = z.object({
   id: z.string(),
@@ -20,21 +21,13 @@ const testSerializer = {
   parse: (object: any) => TestSchema.parse(object),
 };
 
-const logger: jest.Mocked<LoggerInterface> = {
-  info: jest.fn(),
-  error: jest.fn(),
-  child: jest.fn(),
-} as any;
+const logger = useMockLogger();
 
 const dataSources = {
   doSomething: jest.fn(),
 };
 
 beforeEach(() => {
-  logger.info.mockReset();
-  logger.error.mockReset();
-  logger.child.mockReset();
-  logger.child.mockImplementation(() => logger);
   dataSources.doSomething.mockReset();
 });
 

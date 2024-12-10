@@ -1,15 +1,11 @@
 import { v4 as uuid } from 'uuid';
-import { LoggerInterface } from '@lifeomic/logging';
-import { SQSMessageAction, SQSMessageHandler } from './sqs';
 import { promises as fs } from 'fs';
 import { privateDecrypt } from 'crypto';
 
-const logger: jest.Mocked<LoggerInterface> = {
-  info: jest.fn(),
-  error: jest.fn(),
-  child: jest.fn(),
-  warn: jest.fn(),
-} as any;
+import { SQSMessageAction, SQSMessageHandler } from './sqs';
+import { useMockLogger } from './jest-utils';
+
+const logger = useMockLogger();
 
 let publicKey: string;
 beforeAll(async () => {
@@ -17,14 +13,6 @@ beforeAll(async () => {
     __dirname + '/__fixtures__/public-key.pem',
     'utf8',
   );
-});
-
-beforeEach(() => {
-  logger.info.mockReset();
-  logger.error.mockReset();
-  logger.warn.mockReset();
-  logger.child.mockReset();
-  logger.child.mockImplementation(() => logger);
 });
 
 const testSerializer = {
