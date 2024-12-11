@@ -26,11 +26,12 @@
     "@aws-sdk/client-dynamodb": "^3.369.0",
     "@lifeomic/eslint-config-standards": "^3.2.3",
     "@lifeomic/jest-config": "^1.1.2",
-    "@lifeomic/logging": "^4.0.0",
     "@lifeomic/typescript-config": "^3.1.0",
+    "@types/bunyan": "^1.8.11",
     "@types/jest": "^27.4.1",
     "@types/lodash": "^4.14.195",
     "@types/uuid": "^8.3.4",
+    "bunyan": "^1.8.15",
     "conventional-changelog-conventionalcommits": "^4.6.3",
     "eslint": "^8.9.0",
     "eslint-config-prettier": "^8.4.0",
@@ -51,6 +52,6 @@
     "uuid": "^8.3.2"
   },
   "peerDependencies": {
-    "@lifeomic/logging": "*"
+    "bunyan": "^1.8"
   }
 }

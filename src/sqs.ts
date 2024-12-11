@@ -1,6 +1,6 @@
-import { LoggerInterface } from '@lifeomic/logging';
 import { v4 as uuid } from 'uuid';
 import { SQSEvent, Context as AWSContext, SQSRecord } from 'aws-lambda';
+import bunyan from 'bunyan';
 import {
   BaseContext,
   BaseHandlerConfig,
@@ -10,6 +10,7 @@ import {
   withHealthCheckHandling,
 } from './utils';
 import { publicEncrypt } from 'crypto';
+import { LoggerInterface } from './logging';
 
 export type SQSMessageHandlerConfig<Message, Context> =
   BaseHandlerConfig<Context> & {
@@ -141,9 +142,14 @@ export class SQSMessageHandler<Message, Context> {
     return withHealthCheckHandling(async (event, awsContext) => {
       // 1. Build the context.
       const correlationId = uuid();
+      /* istanbul ignore next */
+      const logger =
+        this.config.logger ??
+        bunyan.createLogger({ name: 'SQSMessageHandler' });
+
       const context: BaseContext & Context = {
         correlationId,
-        logger: this.config.logger.child({
+        logger: logger.child({
           requestID: awsContext.awsRequestId,
           correlationId,
         }),
