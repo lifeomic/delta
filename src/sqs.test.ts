@@ -80,6 +80,40 @@ describe('SQSMessageHandler', () => {
     );
   });
 
+  test('accepts a correlation id', async () => {
+    expect.assertions(3);
+
+    const lambda = new SQSMessageHandler({
+      logger,
+      parseMessage: testSerializer.parseMessage,
+      createRunContext: (ctx) => {
+        expect(typeof ctx.correlationId === 'string').toBe(true);
+        return {};
+      },
+    }).lambda();
+
+    const correlationId = uuid();
+    const response = await lambda(
+      {
+        Records: [
+          {
+            attributes: {},
+            body: JSON.stringify({ correlationId, data: 'test-event-1' }),
+          },
+        ],
+      } as any,
+      {} as any,
+    );
+
+    // Assert that when all messages are processed successfully and partial
+    // batch responses are not used (the default setting), nothing is returned
+    // as the lambda response.
+    expect(response).toBeUndefined();
+    expect(logger.child).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId }),
+    );
+  });
+
   test('allows body redaction', async () => {
     expect.assertions(2);
 
