@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import { SQSEvent, Context as AWSContext, SQSRecord } from 'aws-lambda';
 import bunyan from 'bunyan';
+import get from 'lodash/get';
 import {
   BaseContext,
   BaseHandlerConfig,
@@ -140,26 +141,23 @@ export class SQSMessageHandler<Message, Context> {
     context: AWSContext,
   ) => Promise<PartialBatchResponse> {
     return withHealthCheckHandling(async (event, awsContext) => {
-      // 1. Build the context.
-      const correlationId = uuid();
+      // 1. Setup the logger.
+      // The batch ID provides a way to correlate all messages that are processed together.
+      // This is particularly useful for correlating handled and unhandled records.
+      const batchId = uuid();
+
       /* istanbul ignore next */
       const logger =
         this.config.logger ??
-        bunyan.createLogger({ name: 'SQSMessageHandler' });
-
-      const context: BaseContext & Context = {
-        correlationId,
-        logger: logger.child({
-          requestID: awsContext.awsRequestId,
-          correlationId,
-        }),
-      } as any;
-
-      Object.assign(context, await this.config.createRunContext(context));
+        bunyan.createLogger({
+          batchId,
+          name: 'SQSMessageHandler',
+          requestId: awsContext.awsRequestId,
+        });
 
       // 2. Process all the records.
       const redactor = this.config.redactionConfig
-        ? safeRedactor(context.logger, this.config.redactionConfig)
+        ? safeRedactor(logger, this.config.redactionConfig)
         : undefined;
 
       const redactRecord = (record: SQSRecord): SQSRecord =>
@@ -176,10 +174,7 @@ export class SQSMessageHandler<Message, Context> {
             Records: event.Records.map(redactRecord),
           }
         : event;
-      context.logger.info(
-        { event: redactedEvent },
-        'Processing SQS topic message',
-      );
+      logger.info({ event: redactedEvent }, 'Processing SQS topic message');
 
       const { unprocessedRecords } = await processWithOrdering(
         {
@@ -192,7 +187,7 @@ export class SQSMessageHandler<Message, Context> {
           concurrency: this.config.concurrency ?? 5,
         },
         async (record) => {
-          const messageLogger = context.logger.child({
+          const messageLogger = logger.child({
             messageId: record.messageId,
           });
 
@@ -209,16 +204,29 @@ export class SQSMessageHandler<Message, Context> {
             }
             throw err;
           }
+
+          // Extracting the correlation ID from the message allows for
+          // multiple messages to be correlated together.
+          const correlationId = get(parsedMessage, 'correlationId', uuid());
+
+          // Context is built per message to support message-specific correlation IDs.
+          const context: BaseContext & Context = {
+            correlationId,
+            logger: messageLogger.child({ correlationId }),
+          } as any;
+
+          Object.assign(context, await this.config.createRunContext(context));
+
           for (const action of this.messageActions) {
-            await action({ ...context, logger: messageLogger }, parsedMessage);
+            await action({ ...context }, parsedMessage);
           }
 
-          messageLogger.info('Successfully processed SQS message');
+          context.logger.info('Successfully processed SQS message');
         },
       );
 
       return handleUnprocessedRecords({
-        logger: context.logger,
+        logger, // The base logger only logs the batch ID.
         unprocessedRecords,
         usePartialBatchResponses: !!this.config.usePartialBatchResponses,
         getItemIdentifier: (record) => record.messageId,

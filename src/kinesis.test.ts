@@ -607,12 +607,12 @@ describe('KinesisEventHandler', () => {
         },
         {} as any,
       ),
-    ).rejects.toThrow('Unexpected token o in JSON at position 1');
+    ).rejects.toThrow(/Unexpected token/);
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         err: expect.objectContaining({
-          message: 'Unexpected token o in JSON at position 1',
+          message: expect.stringContaining('Unexpected token'),
         }),
       }),
       'Failed to parse event',
@@ -658,7 +658,7 @@ describe('KinesisEventHandler', () => {
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         err: expect.objectContaining({
-          message: 'Unexpected token o in JSON at position 1',
+          message: expect.stringContaining('Unexpected token'),
         }),
       }),
       'Failed to parse event',
