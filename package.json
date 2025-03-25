@@ -20,6 +20,10 @@
     ".": "./dist/index.js",
     "./jest-utils": "./dist/jest-utils.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "lint": "eslint .",
     "test": "jest",
