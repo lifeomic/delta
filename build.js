@@ -8,10 +8,6 @@ run('rm -rf dist/');
 
 run('yarn tsc');
 
-for (const file of ['package.json', 'README.md']) {
-  run(`cp ${file} dist/`);
-}
-
 // Remove test files from output
 for (const file of glob.sync('dist/**/*.test.*')) {
   unlinkSync(file);

@@ -16,7 +16,10 @@
     "lambda",
     "streams"
   ],
-  "main": "index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./jest-utils": "./dist/jest-utils.js"
+  },
   "scripts": {
     "lint": "eslint .",
     "test": "jest",
