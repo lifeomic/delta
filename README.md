@@ -94,14 +94,19 @@ test('something', async () => {
 })
 ```
 
-### `SQSMessageHandler`
+### Message Handlers (SQS & SNS)
 
-This helper provides an abstraction over a SQS message Lambda handler.
+Both `SQSMessageHandler` and `SNSMessageHandler` provide a unified abstraction for processing message-based Lambda events. They share the same core functionality through a common base class, with only the underlying AWS event structure differing.
+
+#### Shared Configuration & Usage
+
+Both handlers support the same configuration options and API:
 
 ```typescript
-import { SQSMessageHandler } from '@lifeomic/delta';
+import { SQSMessageHandler, SNSMessageHandler } from '@lifeomic/delta';
 
-const queue = new SQSMessageHandler({
+// Same configuration for both handlers
+const config = {
   logger,
   parseMessage: (message) => {
     /* ... parse from message string -> your custom type ... */
@@ -113,57 +118,79 @@ const queue = new SQSMessageHandler({
   },
   // Optionally specify a concurrency setting for processing events.
   concurrency: 5,
-})
+};
+
+// Use with SQS
+const sqsHandler = new SQSMessageHandler(config)
   .onMessage(async (ctx, message) => {
     // `ctx` contains the nice result of `createRunContext`:
     await ctx.doSomething();
-
     // `ctx` contains a logger by default, which already includes niceties like
     // the AWS request id
-    ctx.logger.info('blah blah');
+    ctx.logger.info('processed SQS message');
   })
   // Add multiple message handlers for code organization.
   .onMessage(async (ctx, message) => {
     // do something else
   });
 
-// Provides a dead-simple API for creating the Lambda.
-export const handler = stream.lambda();
+// Or with SNS - identical API
+const snsHandler = new SNSMessageHandler(config)
+  .onMessage(async (ctx, message) => {
+    // `ctx` contains the nice result of `createRunContext`:
+    await ctx.doSomething();
+    // `ctx` contains a logger by default, which already includes niceties like
+    // the AWS request id
+    ctx.logger.info('processed SNS message');
+  })
+  // Add multiple message handlers for code organization.
+  .onMessage(async (ctx, message) => {
+    // do something else
+  });
+
+// Both provide the same lambda() method
+export const sqsLambda = sqsHandler.lambda();
+export const snsLambda = snsHandler.lambda();
 ```
 
-`SQSMessageHandler` also comes with a nice helper for testing: `harness(...)`
+#### Shared Testing Harness
+
+Both handlers provide identical testing harnesses:
 
 ```typescript
-const context = {
-  doSomething: jest.fn()
-}
+const context = { doSomething: jest.fn() };
 
-const harness = queue.harness({
-  stringifyMessage: (message) => {
-    /* stringify from your custom type -> string */
-    return JSON.stringify(message)
-  },
-  /* optionally override the logger */
+// Same harness API for both handlers
+const testConfig = {
+  stringifyMessage: (message) => JSON.stringify(message),
   logger,
-  createRunContext: () => {
-    /* optionally override the context, to mock e.g. data sources */
-    return context;
-  }
-})
+  createRunContext: () => context,
+};
 
-test('something', async () => {
-  // Provides a simple `sendEvent` function
-  await harness.sendEvent({
-    messages: [
-      { /* message 1 */}
-      { /* message 2 */}
-      { /* message 3 */}
-    ]
-  })
+const sqsHarness = sqsHandler.harness(testConfig);
+const snsHarness = snsHandler.harness(testConfig);
 
-  expect(context.doSomething).toHaveBeenCalledTimes(3)
-})
+test('SQS messages', async () => {
+  await sqsHarness.sendEvent({
+    messages: [{ id: 1 }, { id: 2 }],
+  });
+  expect(context.doSomething).toHaveBeenCalledTimes(2);
+});
+
+test('SNS messages', async () => {
+  await snsHarness.sendEvent({
+    messages: [{ id: 1 }, { id: 2 }],
+  });
+  expect(context.doSomething).toHaveBeenCalledTimes(2);
+});
 ```
+
+#### Key Differences
+
+- **`SQSMessageHandler`**: Processes SQS queue messages, uses `MessageGroupId` for ordering
+- **`SNSMessageHandler`**: Processes SNS topic notifications, uses `MessageId` for ordering
+
+Both handlers support the same features: message parsing, context creation, concurrency control, redaction, partial batch responses, and comprehensive error handling.
 
 ### `KinesisEventHandler`
 
@@ -248,9 +275,12 @@ event source, even when processing in parallel.
 In `DynamoStreamHandler`, events for the same _key_ will always be processed
 serially -- events from different keys will be processed in parallel.
 
-In `SQSMessageHandler`, events with the same `MessageGroupId` will always
-processed serially -- events with different `MessageGroupId` values will be
-processed in parallel.
+In `SQSMessageHandler` and `SNSMessageHandler`, ordering is maintained by:
+
+- **SQS**: Events with the same `MessageGroupId` are processed serially
+- **SNS**: Events are ordered by `MessageId` for consistency
+
+Events with different ordering keys are processed in parallel.
 
 In `KinesisEventHandler`, events with the same `partitionKey` will always
 processed serially -- events with different `partitionKey` values will be
@@ -279,9 +309,9 @@ const stream = new KinesisEventHandler({
   usePartialBatchResponses: true,
 });
 
-// SQS
-const stream = new SQSMessageHandler({
-  // ...
+// SQS & SNS (same configuration)
+const messageHandler = new SQSMessageHandler({
+  // ... or SNSMessageHandler
   usePartialBatchResponses: true,
 });
 ```
